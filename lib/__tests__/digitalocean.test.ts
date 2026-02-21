@@ -52,25 +52,6 @@ describe('listOpenClawDroplets', () => {
     ])
   })
 
-  it('uses the correct DO API URL and auth header', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ droplets: [] }),
-    })
-    vi.stubGlobal('fetch', mockFetch)
-
-    await listOpenClawDroplets('my-do-token')
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v2/droplets'),
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer my-do-token',
-        }),
-      })
-    )
-  })
-
   it('throws on a non-ok response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,

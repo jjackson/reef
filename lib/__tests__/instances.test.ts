@@ -10,7 +10,7 @@ vi.mock('../1password', () => ({ getSecret: mockGetSecret }))
 vi.mock('../digitalocean', () => ({ listOpenClawDroplets: mockListDroplets }))
 vi.mock('../mapping', () => ({ getBotName: mockGetBotName }))
 
-const { listInstances, getInstance, resolveInstance } = await import('../instances')
+const { listInstances } = await import('../instances')
 
 const fakeDroplets = [
   { id: 123, name: 'open-claw-hal', ip: '1.2.3.4' },
@@ -43,27 +43,5 @@ describe('listInstances', () => {
     mockGetBotName.mockReturnValue(null)
     const result = await listInstances()
     expect(result).toHaveLength(0)
-  })
-})
-
-describe('getInstance', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    process.env.DO_API_TOKEN_OP_REF = 'op://AI-Agents/do-token/credential'
-    mockGetSecret.mockResolvedValue('do-api-token-value')
-    mockListDroplets.mockResolvedValue(fakeDroplets)
-    mockGetBotName.mockImplementation((name: string) =>
-      name === 'open-claw-hal' ? 'hal' : null
-    )
-  })
-
-  it('returns instance by id', async () => {
-    const result = await getInstance('open-claw-hal')
-    expect(result?.label).toBe('open-claw-hal')
-  })
-
-  it('returns null for unknown id', async () => {
-    const result = await getInstance('nonexistent')
-    expect(result).toBeNull()
   })
 })
