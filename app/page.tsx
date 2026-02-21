@@ -6,9 +6,10 @@ import { Sidebar } from './components/Sidebar'
 import { AgentDetail } from './components/AgentDetail'
 import { FileViewer } from './components/FileViewer'
 import { ChatPanel } from './components/ChatPanel'
+import { FleetPanel } from './components/FleetPanel'
 
 export default function DashboardPage() {
-  const { instances, setInstances, viewMode, checkedAgents } = useDashboard()
+  const { instances, setInstances, viewMode, setViewMode, checkedAgents } = useDashboard()
 
   useEffect(() => {
     fetch('/api/instances')
@@ -17,6 +18,10 @@ export default function DashboardPage() {
       .catch(() => {})
   }, [setInstances])
 
+  useEffect(() => {
+    if (checkedAgents.size >= 2) setViewMode('fleet')
+  }, [checkedAgents.size, setViewMode])
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
@@ -24,7 +29,7 @@ export default function DashboardPage() {
         {viewMode === 'detail' && <AgentDetail />}
         {viewMode === 'chat' && <ChatPanel />}
         {viewMode === 'file' && <FileViewer />}
-        {viewMode === 'fleet' && <div className="p-6 text-gray-400 text-sm">Fleet — coming in Task 11</div>}
+        {viewMode === 'fleet' && <FleetPanel />}
       </main>
     </div>
   )
