@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { DirectoryNode } from './DirectoryNode'
+import { FileViewer } from './FileViewer'
 
 interface Props {
   instanceId: string
@@ -11,6 +12,7 @@ interface Props {
 
 export function AgentRow({ instanceId, agentId }: Props) {
   const [expanded, setExpanded] = useState(false)
+  const [viewingFile, setViewingFile] = useState<string | null>(null)
 
   const agentPath = `~/.openclaw/agents/${agentId}`
 
@@ -42,8 +44,17 @@ export function AgentRow({ instanceId, agentId }: Props) {
             name={agentId}
             type="directory"
             depth={0}
+            onFileClick={(filePath) => setViewingFile(filePath)}
           />
         </div>
+      )}
+
+      {viewingFile && (
+        <FileViewer
+          instanceId={instanceId}
+          path={viewingFile}
+          onClose={() => setViewingFile(null)}
+        />
       )}
     </div>
   )
