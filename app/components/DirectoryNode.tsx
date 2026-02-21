@@ -13,9 +13,10 @@ interface Props {
   name: string
   type: 'file' | 'directory'
   depth?: number
+  onFileClick?: (path: string, name: string) => void
 }
 
-export function DirectoryNode({ instanceId, path, name, type, depth = 0 }: Props) {
+export function DirectoryNode({ instanceId, path, name, type, depth = 0, onFileClick }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [children, setChildren] = useState<FileEntry[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -45,7 +46,10 @@ export function DirectoryNode({ instanceId, path, name, type, depth = 0 }: Props
       <div
         className={`flex items-center gap-1.5 py-0.5 px-2 rounded text-sm hover:bg-gray-100 ${type === 'directory' ? 'cursor-pointer' : 'cursor-default text-gray-600'}`}
         style={{ paddingLeft: `${8 + indent}px` }}
-        onClick={toggle}
+        onClick={() => {
+          if (type === 'directory') toggle()
+          else if (onFileClick) onFileClick(path, name)
+        }}
       >
         <span className="text-gray-400 w-3 text-center text-xs">
           {type === 'directory' ? (loading ? '...' : expanded ? '\u25BE' : '\u25B8') : '\u00B7'}
@@ -70,6 +74,7 @@ export function DirectoryNode({ instanceId, path, name, type, depth = 0 }: Props
               name={child.name}
               type={child.type}
               depth={depth + 1}
+              onFileClick={onFileClick}
             />
           ))}
         </div>
