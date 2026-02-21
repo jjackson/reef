@@ -17,9 +17,11 @@ interface ActionResult {
 }
 
 export function FleetPanel() {
-  const { instances, checkedAgents, setViewMode } = useDashboard()
+  const { instances, checkedAgents, setViewMode, startBroadcast } = useDashboard()
   const [results, setResults] = useState<ActionResult[]>([])
   const [running, setRunning] = useState(false)
+  const [showBroadcastInput, setShowBroadcastInput] = useState(false)
+  const [broadcastInput, setBroadcastInput] = useState('')
 
   const checkedList = Array.from(checkedAgents).map(key => {
     const [instanceId, agentId] = key.split(':')
@@ -109,8 +111,53 @@ export function FleetPanel() {
           >
             Backup All
           </button>
+          <button
+            onClick={() => setShowBroadcastInput(v => !v)}
+            disabled={running || checkedList.length === 0}
+            className="text-xs px-3 py-1.5 rounded bg-purple-50 text-purple-700 hover:bg-purple-100 disabled:opacity-50 font-medium"
+          >
+            Broadcast
+          </button>
         </div>
       </div>
+
+      {showBroadcastInput && (
+        <div className="px-6 py-3 border-b border-gray-200 bg-purple-50/50">
+          <div className="flex gap-2">
+            <textarea
+              value={broadcastInput}
+              onChange={(e) => setBroadcastInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  if (broadcastInput.trim()) {
+                    startBroadcast(broadcastInput.trim())
+                    setBroadcastInput('')
+                    setShowBroadcastInput(false)
+                  }
+                }
+              }}
+              placeholder="Enter a prompt to send to all selected agents..."
+              rows={2}
+              className="flex-1 resize-none rounded-lg border border-purple-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent bg-white placeholder:text-purple-300"
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                if (broadcastInput.trim()) {
+                  startBroadcast(broadcastInput.trim())
+                  setBroadcastInput('')
+                  setShowBroadcastInput(false)
+                }
+              }}
+              disabled={!broadcastInput.trim()}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-40 transition-colors"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         {results.length === 0 && (
