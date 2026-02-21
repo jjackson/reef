@@ -22,7 +22,7 @@ interface ChatWindowProps {
   instanceId: string
   agentId: string
   agentName: string
-  agentEmoji?: string
+  agentEmoji: string
   initialMessage?: string
 }
 

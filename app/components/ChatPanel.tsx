@@ -40,7 +40,7 @@ export function ChatPanel() {
           instanceId={activeInstanceId || ''}
           agentId={activeAgentId || ''}
           agentName={displayName}
-          agentEmoji={agent?.identityEmoji}
+          agentEmoji={agent?.identityEmoji || ''}
         />
       </div>
     </div>
