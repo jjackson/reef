@@ -19,11 +19,24 @@ export interface InstanceWithAgents {
   agents: AgentInfo[]
 }
 
-export type ViewMode = 'detail' | 'chat' | 'file' | 'fleet'
+export type ViewMode = 'detail' | 'chat' | 'file' | 'fleet' | 'broadcast'
+
+export interface BroadcastAgent {
+  instanceId: string
+  agentId: string
+  agentName: string
+  agentEmoji: string
+  instanceLabel: string
+}
 
 interface FileViewState {
   path: string
   name: string
+}
+
+interface FileEntry {
+  name: string
+  type: 'file' | 'directory'
 }
 
 interface DashboardState {
@@ -46,12 +59,22 @@ interface DashboardState {
   activeFile: FileViewState | null
   setActiveFile: (file: FileViewState | null) => void
 
+  // Directory cache (session-only, keyed by "instanceId:path")
+  dirCache: Map<string, FileEntry[]>
+  setDirCache: (instanceId: string, path: string, entries: FileEntry[]) => void
+  getDirCache: (instanceId: string, path: string) => FileEntry[] | undefined
+
   // Fleet checkboxes
   checkedAgents: Set<string> // "instanceId:agentId" format
   toggleAgentCheck: (instanceId: string, agentId: string) => void
   toggleInstanceCheck: (instanceId: string) => void
   toggleAll: () => void
   clearChecks: () => void
+
+  // Broadcast
+  broadcastMessage: string | null
+  broadcastAgents: BroadcastAgent[]
+  startBroadcast: (message: string) => void
 }
 
 const DashboardContext = createContext<DashboardState | null>(null)
@@ -69,6 +92,17 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [viewMode, setViewMode] = useState<ViewMode>('detail')
   const [activeFile, setActiveFile] = useState<FileViewState | null>(null)
   const [checkedAgents, setCheckedAgents] = useState<Set<string>>(new Set())
+  const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null)
+  const [broadcastAgents, setBroadcastAgents] = useState<BroadcastAgent[]>([])
+  const [dirCache] = useState<Map<string, FileEntry[]>>(new Map())
+
+  const setDirCache = useCallback((instanceId: string, path: string, entries: FileEntry[]) => {
+    dirCache.set(`${instanceId}:${path}`, entries)
+  }, [dirCache])
+
+  const getDirCache = useCallback((instanceId: string, path: string) => {
+    return dirCache.get(`${instanceId}:${path}`)
+  }, [dirCache])
 
   const updateInstanceAgents = useCallback((instanceId: string, agents: AgentInfo[]) => {
     setInstances(prev => prev.map(inst =>
@@ -124,13 +158,36 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     setCheckedAgents(new Set())
   }, [])
 
+  const startBroadcast = useCallback((message: string) => {
+    const agents: BroadcastAgent[] = []
+    for (const key of checkedAgents) {
+      const [instanceId, agentId] = key.split(':')
+      const inst = instances.find(i => i.id === instanceId)
+      if (!inst) continue
+      const agent = inst.agents.find(a => a.id === agentId)
+      if (!agent) continue
+      agents.push({
+        instanceId,
+        agentId,
+        agentName: agent.identityName,
+        agentEmoji: agent.identityEmoji,
+        instanceLabel: inst.label,
+      })
+    }
+    setBroadcastMessage(message)
+    setBroadcastAgents(agents)
+    setViewMode('broadcast')
+  }, [checkedAgents, instances])
+
   return (
     <DashboardContext.Provider value={{
       instances, setInstances, updateInstanceAgents,
       activeInstanceId, activeAgentId, setActiveAgent, clearActive,
       viewMode, setViewMode,
       activeFile, setActiveFile,
+      dirCache, setDirCache, getDirCache,
       checkedAgents, toggleAgentCheck, toggleInstanceCheck, toggleAll, clearChecks,
+      broadcastMessage, broadcastAgents, startBroadcast,
     }}>
       {children}
     </DashboardContext.Provider>
