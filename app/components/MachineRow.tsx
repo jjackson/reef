@@ -3,6 +3,16 @@
 import { useState } from 'react'
 import { AgentRow } from './AgentRow'
 
+interface AgentInfo {
+  id: string
+  identityName: string
+  identityEmoji: string
+  workspace: string
+  agentDir: string
+  model: string
+  isDefault: boolean
+}
+
 interface Instance {
   id: string
   label: string
@@ -18,7 +28,7 @@ interface HealthResult {
 
 export function MachineRow({ instance }: { instance: Instance }) {
   const [expanded, setExpanded] = useState(false)
-  const [agents, setAgents] = useState<string[] | null>(null)
+  const [agents, setAgents] = useState<AgentInfo[] | null>(null)
   const [health, setHealth] = useState<HealthResult | null>(null)
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -159,8 +169,8 @@ export function MachineRow({ instance }: { instance: Instance }) {
               No agents found in ~/.openclaw/agents/
             </p>
           )}
-          {agents?.map((agentId) => (
-            <AgentRow key={agentId} instanceId={instance.id} agentId={agentId} />
+          {agents?.map((agent) => (
+            <AgentRow key={agent.id} instanceId={instance.id} agent={agent} />
           ))}
         </div>
       )}

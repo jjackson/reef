@@ -35,14 +35,31 @@ describe('getHealth', () => {
 })
 
 describe('listAgents', () => {
-  it('returns agent names from ~/.openclaw/agents/', async () => {
-    mockRunCommand.mockResolvedValue({ stdout: 'hal\nmarvin\n', stderr: '', code: 0 })
+  it('parses structured JSON from openclaw agents list --json', async () => {
+    const jsonOutput = JSON.stringify([
+      { id: 'main', identityName: 'Hal', identityEmoji: '🤖', workspace: '/root/.openclaw/workspace', agentDir: '/root/.openclaw/agents/main/agent', model: 'anthropic/claude-opus-4-6', isDefault: true },
+    ])
+    mockRunCommand.mockResolvedValue({ stdout: jsonOutput, stderr: '', code: 0 })
     const result = await listAgents(config)
-    expect(result).toEqual(['hal', 'marvin'])
+    expect(result).toEqual([
+      { id: 'main', identityName: 'Hal', identityEmoji: '🤖', workspace: '/root/.openclaw/workspace', agentDir: '/root/.openclaw/agents/main/agent', model: 'anthropic/claude-opus-4-6', isDefault: true },
+    ])
   })
 
-  it('returns empty array when agents directory is empty', async () => {
-    mockRunCommand.mockResolvedValue({ stdout: '', stderr: '', code: 0 })
+  it('falls back to ls when openclaw CLI is unavailable', async () => {
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: '', stderr: 'command not found', code: 1 }) // openclaw agents list --json
+      .mockResolvedValueOnce({ stdout: 'hal\nmarvin\n', stderr: '', code: 0 })     // ls fallback
+    const result = await listAgents(config)
+    expect(result).toHaveLength(2)
+    expect(result[0].id).toBe('hal')
+    expect(result[0].identityName).toBe('hal')
+    expect(result[1].id).toBe('marvin')
+  })
+
+  it('returns empty array when no agents exist', async () => {
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: '[]', stderr: '', code: 0 })
     const result = await listAgents(config)
     expect(result).toEqual([])
   })
@@ -79,13 +96,26 @@ describe('runHygieneCheck', () => {
 })
 
 describe('sendChatMessage', () => {
-  it('returns the response from the OpenClaw agent', async () => {
+  it('parses structured JSON response from openclaw CLI', async () => {
     mockRunCommand.mockResolvedValue({
-      stdout: '{"reply": "Hello from hal"}',
+      stdout: JSON.stringify({ reply: 'Hello from hal', agentId: 'main', model: 'anthropic/claude-opus-4-6', sessionId: 'abc123' }),
       stderr: '',
       code: 0,
     })
     const result = await sendChatMessage(config, 'hal', 'Hello')
-    expect(result).toContain('Hello from hal')
+    expect(result.reply).toBe('Hello from hal')
+    expect(result.agentId).toBe('main')
+    expect(result.model).toBe('anthropic/claude-opus-4-6')
+  })
+
+  it('falls back to plain text when output is not JSON', async () => {
+    mockRunCommand.mockResolvedValue({
+      stdout: 'Hello, I am hal!',
+      stderr: '',
+      code: 0,
+    })
+    const result = await sendChatMessage(config, 'hal', 'Hello')
+    expect(result.reply).toBe('Hello, I am hal!')
+    expect(result.agentId).toBe('hal')
   })
 })

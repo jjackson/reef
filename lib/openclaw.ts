@@ -12,6 +12,23 @@ export interface FileEntry {
   type: 'file' | 'directory'
 }
 
+export interface AgentInfo {
+  id: string
+  identityName: string
+  identityEmoji: string
+  workspace: string
+  agentDir: string
+  model: string
+  isDefault: boolean
+}
+
+export interface ChatResponse {
+  reply: string
+  agentId: string
+  model: string
+  sessionId: string
+}
+
 /**
  * Checks the health of an OpenClaw instance via SSH.
  * Runs four commands in parallel: process check, disk, memory, uptime.
@@ -36,15 +53,42 @@ export async function getHealth(config: SshConfig): Promise<HealthResult> {
 }
 
 /**
- * Lists the agents on this machine by reading ~/.openclaw/agents/.
- * Each subdirectory is an agent.
+ * Lists agents via `openclaw agents list --json`.
+ * Falls back to directory listing if the CLI command isn't available.
  */
-export async function listAgents(config: SshConfig): Promise<string[]> {
+export async function listAgents(config: SshConfig): Promise<AgentInfo[]> {
   const result = await runCommand(
+    config,
+    'openclaw agents list --json 2>/dev/null'
+  )
+
+  const output = result.stdout.trim()
+  if (output.startsWith('[')) {
+    try {
+      return JSON.parse(output) as AgentInfo[]
+    } catch {
+      // fall through to fallback
+    }
+  }
+
+  // Fallback: ls-based discovery (no identity info available)
+  const fallback = await runCommand(
     config,
     'ls -1 ~/.openclaw/agents/ 2>/dev/null || true'
   )
-  return result.stdout.trim().split('\n').filter(Boolean)
+  return fallback.stdout
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((id) => ({
+      id,
+      identityName: id,
+      identityEmoji: '',
+      workspace: '',
+      agentDir: `~/.openclaw/agents/${id}`,
+      model: '',
+      isDefault: false,
+    }))
 }
 
 /**
@@ -55,9 +99,11 @@ export async function listDirectory(
   config: SshConfig,
   remotePath: string
 ): Promise<FileEntry[]> {
+  // Expand ~ to $HOME so tilde works inside quotes (bash doesn't expand ~ in quotes)
+  const safePath = remotePath.replace(/^~/, '$HOME')
   const result = await runCommand(
     config,
-    `ls -1p "${remotePath}" 2>/dev/null || true`
+    `ls -1p "${safePath}" 2>/dev/null || true`
   )
   return result.stdout
     .trim()
@@ -84,26 +130,50 @@ export async function runHygieneCheck(config: SshConfig): Promise<string> {
 }
 
 /**
- * Sends a message to a specific OpenClaw agent by SSH-ing in and
- * curl-ing the local OpenClaw HTTP API with the agent ID.
+ * Sends a message to a specific OpenClaw agent via the CLI over SSH.
  *
- * TODO: Confirm OpenClaw's local HTTP API port and endpoint.
- *       Current placeholder: localhost:3000/api/chat with { message, agent } body.
- * TODO: Confirm how OpenClaw routes to a specific agent (agent param? separate port per agent?).
+ * Uses `openclaw agent --agent <id> -m "message" --json` which works
+ * regardless of whether the Gateway HTTP API is enabled. The CLI falls
+ * back to the embedded local runtime if the Gateway is unreachable.
+ *
+ * Alternative approach (requires gateway config):
+ *   POST http://127.0.0.1:18789/v1/chat/completions
+ *   with model: "openclaw:<agentId>" and Authorization: Bearer <token>
  */
 export async function sendChatMessage(
   config: SshConfig,
   agentId: string,
   message: string
-): Promise<string> {
-  const OPENCLAW_PORT = 3000 // TODO: confirm actual port
+): Promise<ChatResponse> {
   const escaped = message.replace(/\\/g, '\\\\').replace(/'/g, "'\\''")
 
   const result = await runCommand(
     config,
-    `curl -s -X POST http://localhost:${OPENCLAW_PORT}/api/chat ` +
-    `-H 'Content-Type: application/json' ` +
-    `-d '{"message": "${escaped}", "agent": "${agentId}"}' 2>&1`
+    `openclaw agent --agent '${agentId}' -m '${escaped}' --json 2>&1`
   )
-  return result.stdout
+
+  const output = result.stdout.trim()
+
+  // Try to parse structured JSON response
+  if (output.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(output)
+      return {
+        reply: parsed.reply ?? parsed.content ?? parsed.message ?? '',
+        agentId: parsed.agentId ?? agentId,
+        model: parsed.model ?? '',
+        sessionId: parsed.sessionId ?? '',
+      }
+    } catch {
+      // fall through to plain text
+    }
+  }
+
+  // Fallback: treat entire output as plain text reply
+  return {
+    reply: output || result.stderr || '(no response)',
+    agentId,
+    model: '',
+    sessionId: '',
+  }
 }

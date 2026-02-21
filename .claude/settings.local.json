@@ -23,7 +23,9 @@
       "Bash(where:*)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:docs.openclaw.ai)",
-      "WebFetch(domain:deepwiki.com)"
+      "WebFetch(domain:deepwiki.com)",
+      "Bash(node --env-file=.env.local scripts/explore-agent.mjs:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }
