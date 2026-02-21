@@ -1,0 +1,4 @@
+{
+  "__comment": "Maps DO droplet names to 1Password bot names. TODO: replace with DO tags or convention.",
+  "open-claw-example": "example-bot"
+}
