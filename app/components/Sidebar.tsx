@@ -107,6 +107,7 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
 
 export function Sidebar() {
   const { instances, checkedAgents, toggleAll } = useDashboard()
+  const [treeCollapsed, setTreeCollapsed] = useState(false)
   const allAgents = instances.flatMap(i => i.agents.map(a => `${i.id}:${a.id}`))
   const allChecked = allAgents.length > 0 && allAgents.every(k => checkedAgents.has(k))
 
@@ -116,7 +117,7 @@ export function Sidebar() {
         <h1 className="text-lg font-bold text-gray-900">reef</h1>
         <p className="text-xs text-gray-500">OpenClaw management</p>
       </div>
-      <div className="px-2 py-1 border-b border-gray-100">
+      <div className="px-2 py-1 border-b border-gray-100 flex items-center justify-between">
         <label className="flex items-center gap-2 text-xs text-gray-500 px-2 py-1 cursor-pointer">
           <input
             type="checkbox"
@@ -126,17 +127,27 @@ export function Sidebar() {
           />
           Select all
         </label>
+        <button
+          onClick={() => setTreeCollapsed(v => !v)}
+          className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1"
+          title={treeCollapsed ? 'Expand tree' : 'Collapse tree'}
+        >
+          {treeCollapsed ? '\u25B8' : '\u25BE'}
+        </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {instances.map(inst => (
-          <MachineItem key={inst.id} instance={inst} />
-        ))}
-        {instances.length === 0 && (
-          <p className="text-xs text-gray-400 italic px-2 py-4">Loading...</p>
-        )}
-      </div>
+      {!treeCollapsed && (
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {instances.map(inst => (
+            <MachineItem key={inst.id} instance={inst} />
+          ))}
+          {instances.length === 0 && (
+            <p className="text-xs text-gray-400 italic px-2 py-4">Loading...</p>
+          )}
+        </div>
+      )}
+      {treeCollapsed && <div className="flex-1" />}
       <div className="px-4 py-2 border-t border-gray-100">
-        <p className="text-xs text-gray-300">reef v2.0.6</p>
+        <p className="text-xs text-gray-300">reef v2.1.0</p>
       </div>
     </aside>
   )
