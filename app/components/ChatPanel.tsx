@@ -11,6 +11,10 @@ export function ChatPanel() {
 
   const displayName = agent?.identityName || activeAgentId || 'agent'
 
+  if (!activeInstanceId || !activeAgentId) {
+    return <div className="p-6 text-sm text-slate-400">No agent selected</div>
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -37,8 +41,8 @@ export function ChatPanel() {
       {/* Chat */}
       <div className="flex-1 min-h-0">
         <ChatWindow
-          instanceId={activeInstanceId || ''}
-          agentId={activeAgentId || ''}
+          instanceId={activeInstanceId}
+          agentId={activeAgentId}
           agentName={displayName}
           agentEmoji={agent?.identityEmoji || ''}
         />
