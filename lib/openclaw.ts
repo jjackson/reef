@@ -177,3 +177,126 @@ export async function sendChatMessage(
     sessionId: '',
   }
 }
+
+export interface AgentHealthResult {
+  exists: boolean
+  dirSize: string
+  lastActivity: string
+  processRunning: boolean
+}
+
+export interface AgentHygieneResult {
+  errorCount: number
+  staleFileCount: number
+  dirSize: string
+}
+
+/**
+ * Checks the health of a specific agent by examining its directory,
+ * size, last activity, and whether a process is running for it.
+ */
+export async function getAgentHealth(
+  config: SshConfig,
+  agentId: string
+): Promise<AgentHealthResult> {
+  const agentDir = `~/.openclaw/agents/${agentId}`
+  const safeDir = agentDir.replace(/^~/, '$HOME')
+
+  const [existsResult, sizeResult, activityResult, processResult] = await Promise.all([
+    runCommand(config, `test -d ${safeDir} && echo "exists" || echo "missing"`),
+    runCommand(config, `du -sh ${safeDir} 2>/dev/null | cut -f1 || echo "0"`),
+    runCommand(config, `find ${safeDir} -type f -printf '%T@\\n' 2>/dev/null | sort -n | tail -1 || echo "0"`),
+    runCommand(config, `pgrep -f "${agentId}" > /dev/null 2>&1 && echo "running" || echo "stopped"`),
+  ])
+
+  const lastEpoch = parseFloat(activityResult.stdout.trim()) || 0
+  const lastActivity = lastEpoch > 0
+    ? new Date(lastEpoch * 1000).toISOString()
+    : 'never'
+
+  return {
+    exists: existsResult.stdout.trim() === 'exists',
+    dirSize: sizeResult.stdout.trim(),
+    lastActivity,
+    processRunning: processResult.stdout.trim() === 'running',
+  }
+}
+
+/**
+ * Runs hygiene checks on a specific agent: error counts in logs,
+ * stale files, and directory size.
+ */
+export async function runAgentHygieneCheck(
+  config: SshConfig,
+  agentId: string
+): Promise<AgentHygieneResult> {
+  const agentDir = `~/.openclaw/agents/${agentId}`
+  const safeDir = agentDir.replace(/^~/, '$HOME')
+
+  const [errorResult, staleResult, sizeResult] = await Promise.all([
+    runCommand(config, `grep -rci 'error\\|exception' ${safeDir}/*.log 2>/dev/null | awk -F: '{s+=$2} END {print s+0}'`),
+    runCommand(config, `find ${safeDir} -type f -mtime +30 2>/dev/null | wc -l`),
+    runCommand(config, `du -sh ${safeDir} 2>/dev/null | cut -f1 || echo "0"`),
+  ])
+
+  return {
+    errorCount: parseInt(errorResult.stdout.trim(), 10) || 0,
+    staleFileCount: parseInt(staleResult.stdout.trim(), 10) || 0,
+    dirSize: sizeResult.stdout.trim(),
+  }
+}
+
+/**
+ * Backs up a specific agent's directory (not the whole ~/.openclaw/).
+ */
+export async function backupAgent(
+  config: SshConfig,
+  agentId: string,
+  localTarPath: string
+): Promise<void> {
+  const tmpPath = `/tmp/reef-agent-backup-${agentId}.tar.gz`
+  await runCommand(
+    config,
+    `tar -czf ${tmpPath} -C $HOME/.openclaw/agents ${agentId}`
+  )
+  const { sftpPull } = await import('./ssh')
+  await sftpPull(config, tmpPath, localTarPath)
+  await runCommand(config, `rm ${tmpPath}`)
+}
+
+/**
+ * Reads the contents of a remote file via SSH cat.
+ * Path must be within ~/.openclaw/.
+ */
+export async function readRemoteFile(
+  config: SshConfig,
+  remotePath: string
+): Promise<string> {
+  const safePath = remotePath.replace(/^~/, '$HOME')
+  const result = await runCommand(config, `cat "${safePath}"`)
+  if (result.code !== 0) {
+    throw new Error(`Failed to read ${remotePath}: ${result.stderr}`)
+  }
+  return result.stdout
+}
+
+/**
+ * Writes content to a remote file via SSH.
+ * Path must be within ~/.openclaw/.
+ */
+export async function writeRemoteFile(
+  config: SshConfig,
+  remotePath: string,
+  content: string
+): Promise<void> {
+  const safePath = remotePath.replace(/^~/, '$HOME')
+  // Use heredoc to avoid escaping issues
+  const escaped = content.replace(/\\/g, '\\\\').replace(/'/g, "'\\''")
+  const result = await runCommand(
+    config,
+    `cat > "${safePath}" << 'REEF_EOF'\n${content}\nREEF_EOF`
+  )
+  if (result.code !== 0) {
+    throw new Error(`Failed to write ${remotePath}: ${result.stderr}`)
+  }
+}
