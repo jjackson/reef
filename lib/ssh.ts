@@ -109,3 +109,56 @@ export async function backupDirectory(
   await sftpPull(config, tmpPath, localTarPath)
   await runCommand(config, `rm ${tmpPath}`)
 }
+
+import { Readable } from 'stream'
+
+/**
+ * Opens an SSH connection and runs a command, returning a readable stream
+ * of stdout data. The connection closes when the command finishes.
+ * Used for streaming chat responses.
+ */
+export function execStream(
+  config: SshConfig,
+  command: string
+): { stream: Readable; done: Promise<number> } {
+  const output = new Readable({ read() {} })
+  const conn = new Client()
+
+  const done = new Promise<number>((resolve, reject) => {
+    conn
+      .on('ready', () => {
+        conn.exec(command, (err, sshStream) => {
+          if (err) {
+            conn.end()
+            output.destroy(err)
+            return reject(err)
+          }
+
+          sshStream
+            .on('data', (data: Buffer) => {
+              output.push(data)
+            })
+            .on('close', (code: number) => {
+              output.push(null) // signal end
+              conn.end()
+              resolve(code)
+            })
+            .stderr.on('data', (data: Buffer) => {
+              output.push(data) // include stderr in stream
+            })
+        })
+      })
+      .on('error', (err) => {
+        output.destroy(err)
+        reject(err)
+      })
+      .connect({
+        host: config.host,
+        port: config.port ?? 22,
+        username: config.username ?? 'root',
+        privateKey: config.privateKey,
+      })
+  })
+
+  return { stream: output, done }
+}

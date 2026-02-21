@@ -300,3 +300,22 @@ export async function writeRemoteFile(
     throw new Error(`Failed to write ${remotePath}: ${result.stderr}`)
   }
 }
+
+import { Readable } from 'stream'
+import { execStream } from './ssh'
+
+/**
+ * Sends a message to an OpenClaw agent and returns a readable stream
+ * of the response. Used for SSE streaming to the browser.
+ */
+export function streamChatMessage(
+  config: SshConfig,
+  agentId: string,
+  message: string
+): { stream: Readable; done: Promise<number> } {
+  const escaped = message.replace(/\\/g, '\\\\').replace(/'/g, "'\\''")
+  return execStream(
+    config,
+    `openclaw agent --agent '${agentId}' -m '${escaped}' 2>&1`
+  )
+}

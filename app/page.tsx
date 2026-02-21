@@ -5,6 +5,7 @@ import { useDashboard } from './components/context/DashboardContext'
 import { Sidebar } from './components/Sidebar'
 import { AgentDetail } from './components/AgentDetail'
 import { FileViewer } from './components/FileViewer'
+import { ChatPanel } from './components/ChatPanel'
 
 export default function DashboardPage() {
   const { instances, setInstances, viewMode, checkedAgents } = useDashboard()
@@ -21,7 +22,7 @@ export default function DashboardPage() {
       <Sidebar />
       <main className="flex-1 overflow-hidden">
         {viewMode === 'detail' && <AgentDetail />}
-        {viewMode === 'chat' && <div className="p-6 text-gray-400 text-sm">Chat — coming in Task 8</div>}
+        {viewMode === 'chat' && <ChatPanel />}
         {viewMode === 'file' && <FileViewer />}
         {viewMode === 'fleet' && <div className="p-6 text-gray-400 text-sm">Fleet — coming in Task 11</div>}
       </main>
