@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useDashboard } from './components/context/DashboardContext'
 import { Sidebar } from './components/Sidebar'
 import { AgentDetail } from './components/AgentDetail'
+import { FileViewer } from './components/FileViewer'
 
 export default function DashboardPage() {
   const { instances, setInstances, viewMode, checkedAgents } = useDashboard()
@@ -21,7 +22,7 @@ export default function DashboardPage() {
       <main className="flex-1 overflow-hidden">
         {viewMode === 'detail' && <AgentDetail />}
         {viewMode === 'chat' && <div className="p-6 text-gray-400 text-sm">Chat — coming in Task 8</div>}
-        {viewMode === 'file' && <div className="p-6 text-gray-400 text-sm">File viewer — coming in Task 7</div>}
+        {viewMode === 'file' && <FileViewer />}
         {viewMode === 'fleet' && <div className="p-6 text-gray-400 text-sm">Fleet — coming in Task 11</div>}
       </main>
     </div>
