@@ -66,10 +66,16 @@ export function ChatWindow({ instanceId, agentId, agentName, agentEmoji, initial
       })
 
       if (!res.ok) {
-        const data = await res.json()
+        let errorMsg = `HTTP ${res.status}`
+        try {
+          const data = await res.json()
+          errorMsg = data.error || errorMsg
+        } catch {
+          // Response wasn't JSON (e.g. HTML error page)
+        }
         setMessages(prev => {
           const updated = [...prev]
-          updated[updated.length - 1] = { ...agentMsg, content: `Error: ${data.error}` }
+          updated[updated.length - 1] = { ...agentMsg, content: `Error: ${errorMsg}` }
           return updated
         })
         return
