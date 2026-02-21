@@ -162,3 +162,38 @@ export function execStream(
 
   return { stream: output, done }
 }
+
+/**
+ * SFTP-pushes a local file to a remote machine.
+ */
+export async function sftpPush(
+  config: SshConfig,
+  localPath: string,
+  remotePath: string
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const conn = new Client()
+
+    conn
+      .on('ready', () => {
+        conn.sftp((err, sftp) => {
+          if (err) {
+            conn.end()
+            return reject(err)
+          }
+          sftp.fastPut(localPath, remotePath, (err) => {
+            conn.end()
+            if (err) reject(err)
+            else resolve()
+          })
+        })
+      })
+      .on('error', reject)
+      .connect({
+        host: config.host,
+        port: config.port ?? 22,
+        username: config.username ?? 'root',
+        privateKey: config.privateKey,
+      })
+  })
+}

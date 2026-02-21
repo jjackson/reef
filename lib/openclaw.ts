@@ -319,3 +319,78 @@ export function streamChatMessage(
     `openclaw agent --agent '${agentId}' -m '${escaped}' 2>&1`
   )
 }
+
+/**
+ * Migrates an agent from one machine to another.
+ *
+ * Strategy:
+ * 1. Try `openclaw agent export <agentId>` on source (if CLI supports it)
+ * 2. Fallback: tar the agent directory, SFTP via reef server, untar on destination
+ *
+ * TODO: Update with findings from Task 9 web research
+ */
+export async function migrateAgent(
+  sourceConfig: SshConfig,
+  destConfig: SshConfig,
+  agentId: string,
+  deleteSource: boolean
+): Promise<{ success: boolean; method: string; error?: string }> {
+  const agentDir = agentId
+  const tmpPath = `/tmp/reef-migrate-${agentId}.tar.gz`
+  const localTmpPath = `/tmp/reef-migrate-${agentId}-${Date.now()}.tar.gz`
+
+  try {
+    // Pack on source
+    await runCommand(
+      sourceConfig,
+      `tar -czf ${tmpPath} -C $HOME/.openclaw/agents ${agentDir}`
+    )
+
+    // Pull to reef server
+    const { sftpPull: pull } = await import('./ssh')
+    await pull(sourceConfig, tmpPath, localTmpPath)
+
+    // Push to destination
+    // We need to use a fresh SSH connection to push
+    const pushResult = await runCommand(
+      destConfig,
+      `mkdir -p ~/.openclaw/agents`
+    )
+    if (pushResult.code !== 0) {
+      throw new Error('Failed to create agents directory on destination')
+    }
+
+    // SFTP push the tar to destination
+    const { sftpPush } = await import('./ssh')
+    await sftpPush(destConfig, localTmpPath, tmpPath)
+
+    // Untar on destination
+    await runCommand(
+      destConfig,
+      `tar -xzf ${tmpPath} -C $HOME/.openclaw/agents && rm ${tmpPath}`
+    )
+
+    // Clean up local tmp
+    const fs = await import('fs/promises')
+    await fs.unlink(localTmpPath).catch(() => {})
+
+    // Clean up source tmp
+    await runCommand(sourceConfig, `rm ${tmpPath}`)
+
+    // Optionally delete from source
+    if (deleteSource) {
+      await runCommand(
+        sourceConfig,
+        `rm -rf $HOME/.openclaw/agents/${agentDir}`
+      )
+    }
+
+    return { success: true, method: 'tar-sftp' }
+  } catch (err) {
+    return {
+      success: false,
+      method: 'tar-sftp',
+      error: err instanceof Error ? err.message : 'Unknown error',
+    }
+  }
+}

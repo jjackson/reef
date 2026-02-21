@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useDashboard } from './context/DashboardContext'
 import { DirectoryNode } from './DirectoryNode'
+import { MigrateDialog } from './MigrateDialog'
 
 interface HealthResult {
   processRunning: boolean
@@ -16,6 +17,7 @@ export function AgentDetail() {
   const [health, setHealth] = useState<HealthResult | null>(null)
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showMigrate, setShowMigrate] = useState(false)
 
   const instance = instances.find(i => i.id === activeInstanceId)
   const agent = instance?.agents.find(a => a.id === activeAgentId)
@@ -97,7 +99,7 @@ export function AgentDetail() {
           Chat
         </button>
         <button
-          onClick={() => {/* migrate dialog — Task 10 */}}
+          onClick={() => setShowMigrate(true)}
           className="text-xs px-3 py-1.5 rounded bg-gray-50 text-gray-700 hover:bg-gray-100 font-medium"
         >
           Migrate...
@@ -133,6 +135,14 @@ export function AgentDetail() {
           }}
         />
       </div>
+
+      {showMigrate && instance && agent && (
+        <MigrateDialog
+          instanceId={instance.id}
+          agentId={agent.id}
+          onClose={() => setShowMigrate(false)}
+        />
+      )}
     </div>
   )
 }
