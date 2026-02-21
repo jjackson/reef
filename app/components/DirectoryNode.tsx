@@ -31,7 +31,7 @@ export function DirectoryNode({ instanceId, path, name, type, depth = 0, onFileC
           `/api/instances/${instanceId}/browse?path=${encodeURIComponent(path)}`
         )
         const data = await res.json()
-        setChildren(data)
+        setChildren(Array.isArray(data) ? data : [])
       } finally {
         setLoading(false)
       }
@@ -51,8 +51,8 @@ export function DirectoryNode({ instanceId, path, name, type, depth = 0, onFileC
           else if (onFileClick) onFileClick(path, name)
         }}
       >
-        <span className="text-gray-400 w-3 text-center text-xs">
-          {type === 'directory' ? (loading ? '...' : expanded ? '\u25BE' : '\u25B8') : '\u00B7'}
+        <span className="text-gray-400 w-3 text-center text-xs flex items-center justify-center">
+          {type === 'directory' ? (loading ? <span className="spinner" /> : expanded ? '\u25BE' : '\u25B8') : '\u00B7'}
         </span>
         <span className={type === 'directory' ? 'text-blue-700 font-medium' : 'text-gray-700'}>
           {name}

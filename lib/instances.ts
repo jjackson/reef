@@ -70,6 +70,14 @@ export async function getInstance(id: string): Promise<Instance | null> {
 export async function resolveInstance(id: string): Promise<ResolvedInstance | null> {
   const instance = await getInstance(id)
   if (!instance) return null
-  const sshKey = await resolveSSHKey(instance.sshKeyRef)
-  return { ...instance, sshKey }
+  try {
+    const sshKey = await resolveSSHKey(instance.sshKeyRef)
+    return { ...instance, sshKey }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('secret reference') || msg.includes('no item matched')) {
+      throw new Error(`No SSH key found for ${instance.label} in 1Password. Expected item: "${instance.sshKeyRef.split('/')[2]}" in the AI-Agents vault.`)
+    }
+    throw err
+  }
 }

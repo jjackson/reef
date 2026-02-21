@@ -35,25 +35,32 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
   const { instances, updateInstanceAgents, checkedAgents, toggleInstanceCheck } = useDashboard()
   const [expanded, setExpanded] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [fetched, setFetched] = useState(false)
 
   const stored = instances.find(i => i.id === instance.id)
   const agents = stored?.agents ?? []
-  const hasAgents = agents.length > 0
 
   // Check if all agents on this machine are checked
+  const hasAgents = agents.length > 0
   const allChecked = hasAgents && agents.every(a => checkedAgents.has(`${instance.id}:${a.id}`))
   const someChecked = !allChecked && agents.some(a => checkedAgents.has(`${instance.id}:${a.id}`))
 
   async function toggle() {
     if (expanded) { setExpanded(false); return }
-    if (!hasAgents) {
+    if (!fetched) {
       setLoading(true)
+      setError(null)
       try {
         const res = await fetch(`/api/instances/${instance.id}/agents`)
-        if (res.ok) {
-          const data = await res.json()
-          updateInstanceAgents(instance.id, data)
+        const data = await res.json()
+        if (!res.ok) {
+          throw new Error(data.error || `HTTP ${res.status}`)
         }
+        updateInstanceAgents(instance.id, data)
+        setFetched(true)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to connect')
       } finally {
         setLoading(false)
       }
@@ -75,15 +82,18 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
           onClick={toggle}
           className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
         >
-          <span className="text-gray-400 text-xs w-3 text-center">
-            {loading ? '\u22EF' : expanded ? '\u25BE' : '\u25B8'}
+          <span className="text-gray-400 text-xs w-3 text-center flex items-center justify-center">
+            {loading ? <span className="spinner" /> : expanded ? '\u25BE' : '\u25B8'}
           </span>
           <span className="font-semibold text-gray-900 truncate">{instance.label}</span>
         </button>
       </div>
       {expanded && (
         <div className="pb-1">
-          {agents.length === 0 && !loading && (
+          {error && (
+            <p className="text-xs text-red-500 ml-8 py-1">{error}</p>
+          )}
+          {agents.length === 0 && !loading && !error && (
             <p className="text-xs text-gray-400 italic ml-8 py-1">No agents</p>
           )}
           {agents.map(agent => (
@@ -124,6 +134,9 @@ export function Sidebar() {
         {instances.length === 0 && (
           <p className="text-xs text-gray-400 italic px-2 py-4">Loading...</p>
         )}
+      </div>
+      <div className="px-4 py-2 border-t border-gray-100">
+        <p className="text-xs text-gray-300">reef v2.0.6</p>
       </div>
     </aside>
   )

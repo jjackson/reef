@@ -31,7 +31,7 @@ export function AgentDetail() {
   }
 
   const workspacePath = agent.workspace
-    ? agent.workspace.replace(/.*?(\.openclaw\/)/, '~/.$1')
+    ? agent.workspace.replace(/.*?(\.openclaw\/)/, '~/$1')
     : '~/.openclaw/workspace'
 
   async function runAction(action: string) {
