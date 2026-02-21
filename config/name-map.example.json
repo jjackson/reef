@@ -1,0 +1,5 @@
+{
+  "__comment": "Copy to name-map.json. Maps DO droplet names to 1Password item name prefixes.",
+  "dot-openclaw": "Dot",
+  "myri-openclaw": "Myri"
+}

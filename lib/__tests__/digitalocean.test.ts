@@ -6,6 +6,7 @@ const mockDropletResponse = {
     {
       id: 123,
       name: 'open-claw-hal',
+      tags: [],
       networks: {
         v4: [
           { type: 'private', ip_address: '10.0.0.1' },
@@ -16,8 +17,17 @@ const mockDropletResponse = {
     {
       id: 456,
       name: 'open-claw-marvin',
+      tags: [],
       networks: {
         v4: [{ type: 'public', ip_address: '5.6.7.8' }],
+      },
+    },
+    {
+      id: 789,
+      name: 'my-web-server',
+      tags: [],
+      networks: {
+        v4: [{ type: 'public', ip_address: '9.9.9.9' }],
       },
     },
   ],
@@ -52,7 +62,7 @@ describe('listOpenClawDroplets', () => {
     await listOpenClawDroplets('my-do-token')
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('tag_name=openclaw'),
+      expect.stringContaining('/v2/droplets'),
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer my-do-token',

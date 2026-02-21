@@ -5,7 +5,25 @@
       "Bash(npx create-next-app@latest:*)",
       "Bash(npm install:*)",
       "Bash(timeout 15 npm run dev:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npx vitest run:*)",
+      "Bash(npx next build:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh repo create:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(timeout 10 npm run dev:*)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(taskkill:*)",
+      "Bash(where:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.openclaw.ai)",
+      "WebFetch(domain:deepwiki.com)"
     ]
   }
 }

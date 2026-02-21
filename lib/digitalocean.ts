@@ -4,13 +4,16 @@ export interface Droplet {
   ip: string
 }
 
+const OPENCLAW_PATTERN = /openclaw|open-claw/i
+
 /**
- * Lists all Digital Ocean droplets tagged "openclaw".
- * Tag your droplets in DO with "openclaw" to include them in reef.
+ * Lists all Digital Ocean droplets that match OpenClaw naming.
+ * Finds droplets with "openclaw" or "open-claw" in their name,
+ * OR tagged with "openclaw".
  */
 export async function listOpenClawDroplets(apiToken: string): Promise<Droplet[]> {
   const res = await fetch(
-    'https://api.digitalocean.com/v2/droplets?tag_name=openclaw&per_page=100',
+    'https://api.digitalocean.com/v2/droplets?per_page=200',
     {
       headers: {
         Authorization: `Bearer ${apiToken}`,
@@ -25,9 +28,14 @@ export async function listOpenClawDroplets(apiToken: string): Promise<Droplet[]>
 
   const data = await res.json()
 
-  return data.droplets.map((d: any) => ({
-    id: d.id,
-    name: d.name,
-    ip: d.networks.v4.find((n: any) => n.type === 'public')?.ip_address ?? '',
-  }))
+  return data.droplets
+    .filter((d: any) =>
+      OPENCLAW_PATTERN.test(d.name) ||
+      d.tags?.includes('openclaw')
+    )
+    .map((d: any) => ({
+      id: d.id,
+      name: d.name,
+      ip: d.networks.v4.find((n: any) => n.type === 'public')?.ip_address ?? '',
+    }))
 }

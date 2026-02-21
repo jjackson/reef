@@ -30,7 +30,11 @@ export function MachineRow({ instance }: { instance: Instance }) {
       try {
         const res = await fetch(`/api/instances/${instance.id}/agents`)
         const data = await res.json()
-        setAgents(res.ok ? data : [])
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+        setAgents(data)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load agents')
+        setAgents([])
       } finally {
         setLoading(null)
       }

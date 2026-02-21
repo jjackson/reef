@@ -33,9 +33,9 @@ describe('listInstances', () => {
     expect(result).toHaveLength(2)
     expect(result[0]).toMatchObject({
       id: 'open-claw-hal',
-      label: 'hal',
+      label: 'open-claw-hal',
       ip: '1.2.3.4',
-      sshKeyRef: 'op://AI-Agents/hal - SSH Private Key/private key',
+      sshKeyRef: 'op://AI-Agents/hal - SSH Private Key/notesPlain',
     })
   })
 
@@ -59,7 +59,7 @@ describe('getInstance', () => {
 
   it('returns instance by id', async () => {
     const result = await getInstance('open-claw-hal')
-    expect(result?.label).toBe('hal')
+    expect(result?.label).toBe('open-claw-hal')
   })
 
   it('returns null for unknown id', async () => {

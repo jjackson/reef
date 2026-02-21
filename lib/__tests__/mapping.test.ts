@@ -1,26 +1,43 @@
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@/config/name-map.json', () => ({
-  default: {
+vi.mock('fs', () => ({
+  existsSync: vi.fn(() => true),
+  readFileSync: vi.fn(() => JSON.stringify({
     '__comment': 'ignored',
-    'open-claw-hal': 'hal',
-    'open-claw-marvin': 'marvin',
-  }
+    'open-claw-hal': 'hal-override',
+    'dot-openclaw': 'Dot',
+  })),
 }))
 
 import { getBotName } from '../mapping'
 
 describe('getBotName', () => {
-  it('returns bot name for a known droplet', () => {
-    expect(getBotName('open-claw-hal')).toBe('hal')
+  it('uses explicit map entry when present', () => {
+    expect(getBotName('open-claw-hal')).toBe('hal-override')
   })
 
-  it('returns bot name for another known droplet', () => {
+  it('uses explicit map entry for suffix-pattern names', () => {
+    expect(getBotName('dot-openclaw')).toBe('Dot')
+  })
+
+  it('auto-derives by stripping open-claw- prefix', () => {
     expect(getBotName('open-claw-marvin')).toBe('marvin')
   })
 
-  it('returns null for an unknown droplet', () => {
-    expect(getBotName('open-claw-unknown')).toBeNull()
+  it('auto-derives by stripping openclaw- prefix', () => {
+    expect(getBotName('openclaw-zaphod')).toBe('zaphod')
+  })
+
+  it('auto-derives by stripping -openclaw suffix', () => {
+    expect(getBotName('zara-openclaw')).toBe('zara')
+  })
+
+  it('auto-derives by stripping -open-claw suffix', () => {
+    expect(getBotName('zara-open-claw')).toBe('zara')
+  })
+
+  it('returns full name for non-matching droplets', () => {
+    expect(getBotName('my-other-server')).toBe('my-other-server')
   })
 
   it('ignores __comment keys', () => {
