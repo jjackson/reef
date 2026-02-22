@@ -320,6 +320,54 @@ export function streamChatMessage(
   )
 }
 
+export interface RestartResult {
+  success: boolean
+  method: 'systemd' | 'process-kill'
+  output: string
+}
+
+/**
+ * Restarts the OpenClaw system service on the remote instance.
+ *
+ * Strategy:
+ * 1. Try `systemctl restart openclaw` (works for systemd-managed installs)
+ * 2. Fallback: kill any running openclaw processes with SIGKILL to unblock
+ *    a stuck long-running task (the operator must manually restart after)
+ *
+ * After a systemd restart, waits up to 5s and re-checks the active state.
+ */
+export async function restartOpenClaw(config: SshConfig): Promise<RestartResult> {
+  // Attempt 1: systemd
+  const systemdResult = await runCommand(config, 'systemctl restart openclaw 2>&1')
+  if (systemdResult.code === 0) {
+    // Give the service a moment to come up then verify
+    await new Promise((r) => setTimeout(r, 3000))
+    const checkResult = await runCommand(
+      config,
+      'systemctl is-active openclaw 2>/dev/null'
+    )
+    return {
+      success: checkResult.stdout.trim() === 'active',
+      method: 'systemd',
+      output: (systemdResult.stdout + systemdResult.stderr).trim() || 'restarted via systemd',
+    }
+  }
+
+  // Attempt 2: forcefully kill stuck process so operator can restart manually
+  const killResult = await runCommand(
+    config,
+    'pkill -KILL -x openclaw 2>&1; sleep 1; pgrep -x openclaw > /dev/null 2>&1 && echo "still_running" || echo "killed"'
+  )
+  const killed = killResult.stdout.includes('killed')
+  return {
+    success: killed,
+    method: 'process-kill',
+    output: killed
+      ? 'OpenClaw process killed — service will need to be restarted manually'
+      : 'Could not kill OpenClaw process — check manually',
+  }
+}
+
 /**
  * Migrates an agent from one machine to another.
  *

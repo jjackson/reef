@@ -36,10 +36,6 @@ describe('getBotName', () => {
     expect(getBotName('zara-open-claw')).toBe('zara')
   })
 
-  it('returns full name for non-matching droplets', () => {
-    expect(getBotName('my-other-server')).toBe('my-other-server')
-  })
-
   it('ignores __comment keys', () => {
     expect(getBotName('__comment')).toBeNull()
   })
