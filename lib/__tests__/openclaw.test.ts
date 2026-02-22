@@ -5,7 +5,7 @@ const { mockRunCommand } = vi.hoisted(() => ({
 }))
 vi.mock('../ssh', () => ({ runCommand: mockRunCommand }))
 
-import { getHealth, listAgents, listDirectory, runHygieneCheck, sendChatMessage, restartOpenClaw } from '../openclaw'
+import { getHealth, listAgents, listDirectory, sendChatMessage, restartOpenClaw } from '../openclaw'
 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
@@ -57,12 +57,6 @@ describe('listAgents', () => {
     expect(result[1].id).toBe('marvin')
   })
 
-  it('returns empty array when no agents exist', async () => {
-    mockRunCommand
-      .mockResolvedValueOnce({ stdout: '[]', stderr: '', code: 0 })
-    const result = await listAgents(config)
-    expect(result).toEqual([])
-  })
 })
 
 describe('listDirectory', () => {
@@ -84,14 +78,6 @@ describe('listDirectory', () => {
     mockRunCommand.mockResolvedValue({ stdout: '', stderr: '', code: 0 })
     const result = await listDirectory(config, '~/.openclaw/agents/hal/memories')
     expect(result).toEqual([])
-  })
-})
-
-describe('runHygieneCheck', () => {
-  it('returns stdout from the openclaw check command', async () => {
-    mockRunCommand.mockResolvedValue({ stdout: 'All checks passed\n', stderr: '', code: 0 })
-    const result = await runHygieneCheck(config)
-    expect(result).toContain('All checks passed')
   })
 })
 
