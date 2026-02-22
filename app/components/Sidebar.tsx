@@ -147,7 +147,7 @@ export function Sidebar() {
       )}
       {treeCollapsed && <div className="flex-1" />}
       <div className="px-4 py-2 border-t border-gray-100">
-        <p className="text-xs text-gray-300">reef v2.2.0</p>
+        <p className="text-xs text-gray-300">reef v2.2.1</p>
       </div>
     </aside>
   )
