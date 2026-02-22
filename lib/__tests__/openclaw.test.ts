@@ -5,7 +5,7 @@ const { mockRunCommand } = vi.hoisted(() => ({
 }))
 vi.mock('../ssh', () => ({ runCommand: mockRunCommand }))
 
-import { getHealth, listAgents, listDirectory, runHygieneCheck, sendChatMessage } from '../openclaw'
+import { getHealth, listAgents, listDirectory, runHygieneCheck, sendChatMessage, restartOpenClaw } from '../openclaw'
 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
@@ -117,5 +117,62 @@ describe('sendChatMessage', () => {
     const result = await sendChatMessage(config, 'hal', 'Hello')
     expect(result.reply).toBe('Hello, I am hal!')
     expect(result.agentId).toBe('hal')
+  })
+})
+
+describe('restartOpenClaw', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('returns success via systemd when service restarts cleanly', async () => {
+    // systemctl restart succeeds (code 0), then is-active returns active
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 }) // systemctl restart
+      .mockResolvedValueOnce({ stdout: 'active\n', stderr: '', code: 0 }) // is-active check
+
+    const resultPromise = restartOpenClaw(config)
+    await vi.runAllTimersAsync()
+    const result = await resultPromise
+
+    expect(result.success).toBe(true)
+    expect(result.method).toBe('systemd')
+  })
+
+  it('returns success: false via systemd when service does not come up', async () => {
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 }) // systemctl restart
+      .mockResolvedValueOnce({ stdout: 'failed\n', stderr: '', code: 1 }) // is-active check
+
+    const resultPromise = restartOpenClaw(config)
+    await vi.runAllTimersAsync()
+    const result = await resultPromise
+
+    expect(result.success).toBe(false)
+    expect(result.method).toBe('systemd')
+  })
+
+  it('falls back to process-kill when systemd is unavailable', async () => {
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: '', stderr: 'Failed to connect to bus', code: 1 }) // systemctl fails
+      .mockResolvedValueOnce({ stdout: 'killed\n', stderr: '', code: 0 }) // pkill+check
+
+    const result = await restartOpenClaw(config)
+    expect(result.success).toBe(true)
+    expect(result.method).toBe('process-kill')
+  })
+
+  it('reports failure when process-kill cannot kill the process', async () => {
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: '', stderr: 'No such service', code: 1 }) // systemctl fails
+      .mockResolvedValueOnce({ stdout: 'still_running\n', stderr: '', code: 0 }) // process still alive
+
+    const result = await restartOpenClaw(config)
+    expect(result.success).toBe(false)
+    expect(result.method).toBe('process-kill')
   })
 })
