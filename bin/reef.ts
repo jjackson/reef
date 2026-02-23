@@ -1,4 +1,4 @@
-#!/usr/bin/env npx tsx
+#!/usr/bin/env -S npx tsx
 import { loadEnv } from '../lib/env'
 import { listInstances, resolveInstance } from '../lib/instances'
 import {
