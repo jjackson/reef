@@ -143,8 +143,8 @@ export function execStream(
               conn.end()
               resolve(code)
             })
-            .stderr.on('data', (data: Buffer) => {
-              output.push(data) // include stderr in stream
+            .stderr.on('data', () => {
+              // discard stderr — OpenClaw emits gateway debug info there
             })
         })
       })

@@ -1,4 +1,5 @@
 import { readFile } from 'fs/promises'
+import { loadEnv } from './env'
 import { getSecret } from './1password'
 import { listOpenClawDroplets } from './digitalocean'
 import { getBotName } from './mapping'
@@ -35,6 +36,7 @@ async function resolveSSHKey(opRef: string): Promise<string> {
 }
 
 export async function listInstances(): Promise<Instance[]> {
+  loadEnv()
   // Use DO_API_TOKEN directly if set, otherwise resolve via 1Password
   const doToken = process.env.DO_API_TOKEN
     || await getSecret(process.env.DO_API_TOKEN_OP_REF!)

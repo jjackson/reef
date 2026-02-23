@@ -316,7 +316,7 @@ export function streamChatMessage(
   const escaped = message.replace(/\\/g, '\\\\').replace(/'/g, "'\\''")
   return execStream(
     config,
-    `openclaw agent --agent '${agentId}' -m '${escaped}' 2>&1`
+    `openclaw agent --agent '${agentId}' -m '${escaped}' 2>/dev/null`
   )
 }
 

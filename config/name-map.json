@@ -1,5 +1,7 @@
 {
   "__comment": "Maps DO droplet names to 1Password bot names.",
-  "dot-openclaw": "Dot",
-  "myri-openclaw": "Myri"
+  "openclaw-dot": "Dot",
+  "openclaw-myri": "Myri",
+  "openclaw-hal": "Hal",
+  "openclaw-eva": "Eva"
 }
