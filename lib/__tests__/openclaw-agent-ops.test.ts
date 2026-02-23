@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { mockRunCommand } = vi.hoisted(() => ({
+const { mockRunCommand, mockSftpPull } = vi.hoisted(() => ({
   mockRunCommand: vi.fn(),
+  mockSftpPull: vi.fn(),
 }))
-vi.mock('../ssh', () => ({ runCommand: mockRunCommand, sftpPull: vi.fn() }))
+vi.mock('../ssh', () => ({ runCommand: mockRunCommand, sftpPull: mockSftpPull }))
 
 import { getAgentHealth, runAgentHygieneCheck, backupAgent } from '../openclaw'
 
@@ -57,11 +58,21 @@ describe('runAgentHygieneCheck', () => {
 describe('backupAgent', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('runs tar and cleanup commands', async () => {
+  it('tars the agent dir, pulls it via SFTP, then removes the remote tmp file', async () => {
     mockRunCommand.mockResolvedValue({ stdout: '', stderr: '', code: 0 })
+    mockSftpPull.mockResolvedValue(undefined)
 
-    await backupAgent(config, 'hal', '/tmp/hal-backup.tar.gz')
-    expect(mockRunCommand).toHaveBeenCalledWith(config, expect.stringContaining('tar'))
-    expect(mockRunCommand).toHaveBeenCalledWith(config, expect.stringContaining('rm'))
+    const localPath = '/tmp/hal-backup.tar.gz'
+    const remoteTmp = '/tmp/reef-agent-backup-hal.tar.gz'
+
+    await backupAgent(config, 'hal', localPath)
+
+    expect(mockRunCommand).toHaveBeenNthCalledWith(
+      1,
+      config,
+      `tar -czf ${remoteTmp} -C $HOME/.openclaw/agents hal`
+    )
+    expect(mockSftpPull).toHaveBeenCalledWith(config, remoteTmp, localPath)
+    expect(mockRunCommand).toHaveBeenNthCalledWith(2, config, `rm ${remoteTmp}`)
   })
 })

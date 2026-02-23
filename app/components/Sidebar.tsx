@@ -37,6 +37,9 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fetched, setFetched] = useState(false)
+  const [restarting, setRestarting] = useState(false)
+  const [restartMsg, setRestartMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [confirmRestart, setConfirmRestart] = useState(false)
 
   const stored = instances.find(i => i.id === instance.id)
   const agents = stored?.agents ?? []
@@ -68,9 +71,28 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
     setExpanded(true)
   }
 
+  async function handleRestart() {
+    if (!confirmRestart) {
+      setConfirmRestart(true)
+      return
+    }
+    setConfirmRestart(false)
+    setRestarting(true)
+    setRestartMsg(null)
+    try {
+      const res = await fetch(`/api/instances/${instance.id}/restart`, { method: 'POST' })
+      const data = await res.json()
+      setRestartMsg({ text: data.output || (res.ok ? 'Restarted' : data.error), ok: res.ok })
+    } catch (e) {
+      setRestartMsg({ text: e instanceof Error ? e.message : 'Unknown error', ok: false })
+    } finally {
+      setRestarting(false)
+    }
+  }
+
   return (
     <div>
-      <div className="flex items-center gap-2 py-1.5 px-2 rounded text-sm hover:bg-gray-100">
+      <div className="group flex items-center gap-2 py-1.5 px-2 rounded text-sm hover:bg-gray-100">
         <input
           type="checkbox"
           checked={allChecked}
@@ -87,7 +109,38 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
           </span>
           <span className="font-semibold text-gray-900 truncate">{instance.label}</span>
         </button>
+        {confirmRestart ? (
+          <span className="flex items-center gap-1">
+            <button
+              onClick={handleRestart}
+              className="text-xs px-1.5 py-0.5 rounded bg-red-600 text-white hover:bg-red-700 font-medium"
+              title="Confirm restart"
+            >
+              Confirm
+            </button>
+            <button
+              onClick={() => setConfirmRestart(false)}
+              className="text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={handleRestart}
+            disabled={restarting}
+            className="opacity-0 group-hover:opacity-100 text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 hover:bg-orange-100 disabled:opacity-40 transition-opacity"
+            title="Restart OpenClaw service"
+          >
+            {restarting ? '...' : '↺'}
+          </button>
+        )}
       </div>
+      {restartMsg && (
+        <p className={`text-xs ml-8 py-0.5 pr-2 ${restartMsg.ok ? 'text-green-600' : 'text-red-500'}`}>
+          {restartMsg.text}
+        </p>
+      )}
       {expanded && (
         <div className="pb-1">
           {error && (
