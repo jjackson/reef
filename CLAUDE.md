@@ -37,3 +37,30 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances on Digit
 - `.env.local` and `config/name-map.json` must exist in the working directory (not just the main repo if using worktrees)
 - The 1Password vault is named `AI-Agents`
 - 1Password items follow the pattern `<Name> - SSH Private Key` where Name is capitalized (e.g. "Dot", "Myri")
+
+## CLI
+
+Reef includes a CLI tool for managing instances from the terminal. All commands output JSON to stdout.
+
+**Setup:** Run `npm link` in the project root to make `reef` available globally (requires sudo on Linux). Alternatively use `npx reef` from the project directory.
+
+**Instance commands** (use droplet name as instance ID, e.g. `openclaw-dot`):
+- `reef instances` — list all discovered instances
+- `reef health <instance>` — process status, disk, memory, uptime
+- `reef agents <instance>` — list agents on an instance
+- `reef status <instance>` — deep diagnostics via `openclaw status --all --deep`
+- `reef doctor <instance>` — run `openclaw doctor --deep --yes` to auto-fix issues
+- `reef restart <instance>` — restart OpenClaw (tries gateway, systemd, then kill)
+
+**Agent commands** (instance + agent ID):
+- `reef agent-health <instance> <agent>` — agent directory, size, last activity, process status
+- `reef agent-hygiene <instance> <agent>` — error counts, stale files, directory size
+- `reef chat <instance> <agent> <message>` — send a message, get JSON response
+- `reef backup <instance> <agent>` — download agent tarball to `./backups/`
+
+**Migration pipeline** (composable steps):
+1. `reef backup <source-instance> <agent>` — creates `./backups/<instance>-<agent>-<timestamp>.tar.gz`
+2. `reef check-backup <path-to-tarball>` — verify integrity, list contents
+3. `reef deploy <dest-instance> <agent> <path-to-tarball>` — push, untar, run doctor
+
+**Output contract:** Every command returns `{ "success": true|false, ... }`. Errors include an `"error"` field.
