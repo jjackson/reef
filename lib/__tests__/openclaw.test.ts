@@ -115,9 +115,22 @@ describe('restartOpenClaw', () => {
     vi.useRealTimers()
   })
 
-  it('returns success via systemd when service restarts cleanly', async () => {
-    // systemctl restart succeeds (code 0), then is-active returns active
+  it('returns success via gateway when gateway restart succeeds', async () => {
     mockRunCommand
+      .mockResolvedValueOnce({ stdout: 'restarted\n', stderr: '', code: 0 }) // gateway restart
+      .mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 }) // health check
+
+    const resultPromise = restartOpenClaw(config)
+    await vi.runAllTimersAsync()
+    const result = await resultPromise
+
+    expect(result.success).toBe(true)
+    expect(result.method).toBe('gateway')
+  })
+
+  it('returns success via systemd when gateway fails but systemd works', async () => {
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: '', stderr: 'command not found', code: 1 }) // gateway fails
       .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 }) // systemctl restart
       .mockResolvedValueOnce({ stdout: 'active\n', stderr: '', code: 0 }) // is-active check
 
@@ -131,6 +144,7 @@ describe('restartOpenClaw', () => {
 
   it('returns success: false via systemd when service does not come up', async () => {
     mockRunCommand
+      .mockResolvedValueOnce({ stdout: '', stderr: 'command not found', code: 1 }) // gateway fails
       .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 }) // systemctl restart
       .mockResolvedValueOnce({ stdout: 'failed\n', stderr: '', code: 1 }) // is-active check
 
@@ -142,8 +156,9 @@ describe('restartOpenClaw', () => {
     expect(result.method).toBe('systemd')
   })
 
-  it('falls back to process-kill when systemd is unavailable', async () => {
+  it('falls back to process-kill when gateway and systemd are unavailable', async () => {
     mockRunCommand
+      .mockResolvedValueOnce({ stdout: '', stderr: 'command not found', code: 1 }) // gateway fails
       .mockResolvedValueOnce({ stdout: '', stderr: 'Failed to connect to bus', code: 1 }) // systemctl fails
       .mockResolvedValueOnce({ stdout: 'killed\n', stderr: '', code: 0 }) // pkill+check
 
@@ -154,6 +169,7 @@ describe('restartOpenClaw', () => {
 
   it('reports failure when process-kill cannot kill the process', async () => {
     mockRunCommand
+      .mockResolvedValueOnce({ stdout: '', stderr: 'command not found', code: 1 }) // gateway fails
       .mockResolvedValueOnce({ stdout: '', stderr: 'No such service', code: 1 }) // systemctl fails
       .mockResolvedValueOnce({ stdout: 'still_running\n', stderr: '', code: 0 }) // process still alive
 

@@ -322,7 +322,7 @@ export function streamChatMessage(
 
 export interface RestartResult {
   success: boolean
-  method: 'systemd' | 'process-kill'
+  method: 'gateway' | 'systemd' | 'process-kill'
   output: string
 }
 
@@ -330,22 +330,31 @@ export interface RestartResult {
  * Restarts the OpenClaw system service on the remote instance.
  *
  * Strategy:
- * 1. Try `systemctl restart openclaw` (works for systemd-managed installs)
- * 2. Fallback: kill any running openclaw processes with SIGKILL to unblock
+ * 1. Try `openclaw gateway restart` (preferred, works with gateway-managed installs)
+ * 2. Fallback: `systemctl restart openclaw` (works for systemd-managed installs)
+ * 3. Fallback: kill any running openclaw processes with SIGKILL to unblock
  *    a stuck long-running task (the operator must manually restart after)
  *
- * After a systemd restart, waits up to 5s and re-checks the active state.
+ * After each restart attempt, waits 3s and re-checks service health.
  */
 export async function restartOpenClaw(config: SshConfig): Promise<RestartResult> {
-  // Attempt 1: systemd
+  // Attempt 1: openclaw gateway restart (preferred)
+  const gwResult = await runCommand(config, 'openclaw gateway restart 2>&1')
+  if (gwResult.code === 0) {
+    await new Promise((r) => setTimeout(r, 3000))
+    const check = await runCommand(config, 'openclaw health --json 2>/dev/null')
+    return {
+      success: check.code === 0,
+      method: 'gateway',
+      output: gwResult.stdout.trim() || 'restarted via openclaw gateway restart',
+    }
+  }
+
+  // Attempt 2: systemd
   const systemdResult = await runCommand(config, 'systemctl restart openclaw 2>&1')
   if (systemdResult.code === 0) {
-    // Give the service a moment to come up then verify
     await new Promise((r) => setTimeout(r, 3000))
-    const checkResult = await runCommand(
-      config,
-      'systemctl is-active openclaw 2>/dev/null'
-    )
+    const checkResult = await runCommand(config, 'systemctl is-active openclaw 2>/dev/null')
     return {
       success: checkResult.stdout.trim() === 'active',
       method: 'systemd',
@@ -353,7 +362,7 @@ export async function restartOpenClaw(config: SshConfig): Promise<RestartResult>
     }
   }
 
-  // Attempt 2: forcefully kill stuck process so operator can restart manually
+  // Attempt 3: forceful kill
   const killResult = await runCommand(
     config,
     'pkill -KILL -x openclaw 2>&1; sleep 1; pgrep -x openclaw > /dev/null 2>&1 && echo "still_running" || echo "killed"'
@@ -366,6 +375,72 @@ export async function restartOpenClaw(config: SshConfig): Promise<RestartResult>
       ? 'OpenClaw process killed — service will need to be restarted manually'
       : 'Could not kill OpenClaw process — check manually',
   }
+}
+
+export interface StatusResult {
+  output: string
+  exitCode: number
+}
+
+/**
+ * Runs `openclaw status --all --deep` for comprehensive diagnostics.
+ */
+export async function getStatus(config: SshConfig): Promise<StatusResult> {
+  const result = await runCommand(config, 'openclaw status --all --deep 2>&1')
+  return { output: result.stdout + result.stderr, exitCode: result.code }
+}
+
+export interface DoctorResult {
+  output: string
+  exitCode: number
+}
+
+/**
+ * Runs `openclaw doctor --deep --yes` to auto-diagnose and fix issues.
+ */
+export async function runDoctor(config: SshConfig): Promise<DoctorResult> {
+  const result = await runCommand(config, 'openclaw doctor --deep --yes 2>&1')
+  return { output: result.stdout + result.stderr, exitCode: result.code }
+}
+
+export interface DeployResult {
+  success: boolean
+  doctorOutput: string
+}
+
+/**
+ * Deploys an agent tarball to a remote instance:
+ * 1. SFTP push tarball
+ * 2. Untar to ~/.openclaw/agents/
+ * 3. Run openclaw doctor --deep --yes
+ */
+export async function deployAgent(
+  config: SshConfig,
+  agentId: string,
+  localTarPath: string
+): Promise<DeployResult> {
+  if (!/^[a-zA-Z0-9_-]+$/.test(agentId)) {
+    return { success: false, doctorOutput: `Invalid agentId: ${agentId}` }
+  }
+  const remoteTmp = `/tmp/reef-deploy-${agentId}.tar.gz`
+
+  // Push tarball
+  const { sftpPush } = await import('./ssh')
+  await sftpPush(config, localTarPath, remoteTmp)
+
+  // Ensure agents dir exists and untar
+  await runCommand(config, 'mkdir -p $HOME/.openclaw/agents')
+  const untar = await runCommand(
+    config,
+    `tar -xzf ${remoteTmp} -C $HOME/.openclaw/agents && rm ${remoteTmp}`
+  )
+  if (untar.code !== 0) {
+    return { success: false, doctorOutput: `Untar failed: ${untar.stderr}` }
+  }
+
+  // Run doctor to apply any state migrations
+  const doctor = await runDoctor(config)
+  return { success: true, doctorOutput: doctor.output }
 }
 
 /**
