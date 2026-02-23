@@ -34,18 +34,19 @@ export interface ChatResponse {
  * Runs four commands in parallel: process check, disk, memory, uptime.
  */
 export async function getHealth(config: SshConfig): Promise<HealthResult> {
-  const [processResult, diskResult, memResult, uptimeResult] = await Promise.all([
-    runCommand(
-      config,
-      'systemctl is-active openclaw 2>/dev/null || (pgrep -x openclaw > /dev/null && echo active || echo inactive)'
-    ),
+  const [gatewayResult, diskResult, memResult, uptimeResult] = await Promise.all([
+    runCommand(config, 'openclaw gateway status 2>&1'),
     runCommand(config, 'df -h / | tail -1'),
     runCommand(config, 'free -h | grep Mem'),
     runCommand(config, 'uptime -p'),
   ])
 
+  // Parse "Runtime: running (pid NNN, state active, ...)" from gateway status output
+  const runtimeLine = gatewayResult.stdout.match(/Runtime:\s*(\S+)/)
+  const processRunning = runtimeLine?.[1] === 'running'
+
   return {
-    processRunning: processResult.stdout.trim() === 'active',
+    processRunning,
     disk: diskResult.stdout.trim(),
     memory: memResult.stdout.trim(),
     uptime: uptimeResult.stdout.trim(),
@@ -350,11 +351,11 @@ export async function restartOpenClaw(config: SshConfig): Promise<RestartResult>
     }
   }
 
-  // Attempt 2: systemd
-  const systemdResult = await runCommand(config, 'systemctl restart openclaw 2>&1')
+  // Attempt 2: systemd (user service is openclaw-gateway)
+  const systemdResult = await runCommand(config, 'systemctl --user restart openclaw-gateway 2>&1')
   if (systemdResult.code === 0) {
     await new Promise((r) => setTimeout(r, 3000))
-    const checkResult = await runCommand(config, 'systemctl is-active openclaw 2>/dev/null')
+    const checkResult = await runCommand(config, 'systemctl --user is-active openclaw-gateway 2>/dev/null')
     return {
       success: checkResult.stdout.trim() === 'active',
       method: 'systemd',
@@ -362,10 +363,10 @@ export async function restartOpenClaw(config: SshConfig): Promise<RestartResult>
     }
   }
 
-  // Attempt 3: forceful kill
+  // Attempt 3: forceful kill (process name truncated to 15 chars, use -f for full match)
   const killResult = await runCommand(
     config,
-    'pkill -KILL -x openclaw 2>&1; sleep 1; pgrep -x openclaw > /dev/null 2>&1 && echo "still_running" || echo "killed"'
+    'pkill -KILL -f openclaw-gateway 2>&1; sleep 1; pgrep -f openclaw-gateway > /dev/null 2>&1 && echo "still_running" || echo "killed"'
   )
   const killed = killResult.stdout.includes('killed')
   return {

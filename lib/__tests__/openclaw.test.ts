@@ -10,9 +10,9 @@ import { getHealth, listAgents, listDirectory, sendChatMessage, restartOpenClaw 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
 describe('getHealth', () => {
-  it('returns processRunning: true when systemctl says active', async () => {
+  it('returns processRunning: true when gateway status shows running', async () => {
     mockRunCommand
-      .mockResolvedValueOnce({ stdout: 'active\n', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: 'Runtime: running (pid 12345, state active, sub running)\n', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: '/ 20G 8G 12G 40%', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: 'Mem: 2G 1G 1G', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: 'up 3 days', stderr: '', code: 0 })
@@ -22,9 +22,9 @@ describe('getHealth', () => {
     expect(result.uptime).toBe('up 3 days')
   })
 
-  it('returns processRunning: false when process is not running', async () => {
+  it('returns processRunning: false when gateway status shows stopped', async () => {
     mockRunCommand
-      .mockResolvedValueOnce({ stdout: 'inactive\n', stderr: '', code: 1 })
+      .mockResolvedValueOnce({ stdout: 'Runtime: stopped\n', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
