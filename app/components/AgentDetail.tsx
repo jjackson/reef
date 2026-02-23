@@ -152,11 +152,15 @@ function InlineFileViewer({ instanceId, path, name, onClose }: {
 }
 
 export function AgentDetail() {
-  const { instances, activeInstanceId, activeAgentId, activeFile, setActiveFile, setViewMode } = useDashboard()
+  const { instances, activeInstanceId, activeAgentId, activeFile, setActiveFile, setViewMode, setActiveInstance, updateInstanceAgents } = useDashboard()
   const [health, setHealth] = useState<HealthResult | null>(null)
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showMigrate, setShowMigrate] = useState(false)
+  const [showBindChannel, setShowBindChannel] = useState(false)
+  const [showApproveUser, setShowApproveUser] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const instance = instances.find(i => i.id === activeInstanceId)
   const agent = instance?.agents.find(a => a.id === activeAgentId)
@@ -220,11 +224,21 @@ export function AgentDetail() {
                 </div>
               </div>
             </div>
-            {agent.model && (
-              <span className="text-[11px] text-slate-400 font-mono bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                {agent.model}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {agent.model && (
+                <span className="text-[11px] text-slate-400 font-mono bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                  {agent.model}
+                </span>
+              )}
+              <button
+                onClick={() => setConfirmDelete(true)}
+                disabled={deleteLoading}
+                className="text-[11px] px-2 py-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors font-medium"
+                title="Delete agent"
+              >
+                {deleteLoading ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -255,6 +269,20 @@ export function AgentDetail() {
           >
             <span className="opacity-60">&#x21C4;</span>
             Migrate
+          </button>
+          <button
+            onClick={() => setShowBindChannel(true)}
+            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-colors font-medium"
+          >
+            <span className="opacity-60">#</span>
+            Bind Channel
+          </button>
+          <button
+            onClick={() => setShowApproveUser(true)}
+            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-colors font-medium"
+          >
+            <span className="opacity-60">&#x2713;</span>
+            Approve User
           </button>
         </div>
       </div>
@@ -347,6 +375,311 @@ export function AgentDetail() {
           onClose={() => setShowMigrate(false)}
         />
       )}
+
+      {showBindChannel && instance && agent && (
+        <BindChannelDialog
+          instanceId={instance.id}
+          agentId={agent.id}
+          agentName={agent.identityName || agent.id}
+          onClose={() => setShowBindChannel(false)}
+        />
+      )}
+
+      {showApproveUser && instance && (
+        <ApproveUserDialog
+          instanceId={instance.id}
+          onClose={() => setShowApproveUser(false)}
+        />
+      )}
+
+      {confirmDelete && instance && agent && (
+        <DeleteAgentDialog
+          instanceId={instance.id}
+          agentId={agent.id}
+          onClose={() => setConfirmDelete(false)}
+          onDeleted={async () => {
+            setConfirmDelete(false)
+            setDeleteLoading(true)
+            try {
+              const listRes = await fetch(`/api/instances/${instance.id}/agents`)
+              const agents = listRes.ok ? await listRes.json() : []
+              updateInstanceAgents(instance.id, agents)
+              setActiveInstance(instance.id)
+            } finally {
+              setDeleteLoading(false)
+            }
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function BindChannelDialog({ instanceId, agentId, agentName, onClose }: {
+  instanceId: string
+  agentId: string
+  agentName: string
+  onClose: () => void
+}) {
+  const [channels, setChannels] = useState<Record<string, string[]>>({})
+  const [selected, setSelected] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  // Fetch available channels on mount
+  useEffect(() => {
+    fetch(`/api/instances/${instanceId}/channels/list`)
+      .then(res => res.ok ? res.json() : { chat: {} })
+      .then(data => {
+        setChannels(data.chat || {})
+        // Auto-select first available option
+        const opts = buildOptions(data.chat || {})
+        if (opts.length > 0) setSelected(opts[0].value)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [instanceId])
+
+  // Build flat list of bindable options with separate channel + accountId
+  function buildOptions(chat: Record<string, string[]>) {
+    const opts: { value: string; label: string; channel: string; accountId?: string }[] = []
+    for (const [type, accounts] of Object.entries(chat)) {
+      for (const acct of accounts) {
+        opts.push({
+          value: acct === 'default' ? `${type}:default` : `${type}:${acct}`,
+          label: acct === 'default' ? `${type} (default)` : `${type}: ${acct}`,
+          channel: type,
+          accountId: acct === 'default' ? undefined : acct,
+        })
+      }
+    }
+    return opts
+  }
+
+  const options = buildOptions(channels)
+  const selectedOption = options.find(o => o.value === selected)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedOption) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/instances/${instanceId}/agents/${agentId}/bind-channel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: selectedOption.channel,
+          accountId: selectedOption.accountId,
+        }),
+      })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.output || data.error || 'Failed to bind channel')
+      setSuccess(true)
+      setTimeout(onClose, 1200)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unknown error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <h3 className="text-base font-semibold text-slate-900 mb-4">Bind Channel to {agentName}</h3>
+        {success ? (
+          <div className="text-sm text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2 border border-emerald-200">Channel bound successfully</div>
+        ) : loading ? (
+          <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
+            <span className="inline-block w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+            Loading channels...
+          </div>
+        ) : options.length === 0 ? (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">No channels configured on this instance. Add a channel first from the instance view.</p>
+            <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition-colors">
+              Close
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Channel</label>
+              <select
+                value={selected}
+                onChange={e => setSelected(e.target.value)}
+                className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent bg-white"
+              >
+                {options.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">Messages from this channel will be routed to {agentName}</p>
+            </div>
+            {error && (
+              <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 border border-red-200">{error}</div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={onClose} className="text-sm px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition-colors">
+                Cancel
+              </button>
+              <button type="submit" disabled={!selected || submitting} className="text-sm px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-40 font-medium transition-colors">
+                {submitting ? 'Binding...' : 'Bind'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ApproveUserDialog({ instanceId, onClose }: {
+  instanceId: string
+  onClose: () => void
+}) {
+  const [channel, setChannel] = useState('telegram')
+  const [code, setCode] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!code.trim()) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/instances/${instanceId}/pairing/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel, code: code.trim() }),
+      })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.output || data.error || 'Failed to approve')
+      setSuccess(true)
+      setTimeout(onClose, 1500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unknown error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <h3 className="text-base font-semibold text-slate-900 mb-2">Approve User</h3>
+        <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+          To authorize a user, they must first message the bot on Telegram. OpenClaw will reply with a
+          <strong> pairing code</strong>. Enter that code below to approve them.
+        </p>
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Channel</label>
+            <select
+              value={channel}
+              onChange={e => setChannel(e.target.value)}
+              className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+            >
+              <option value="telegram">Telegram</option>
+              <option value="discord">Discord</option>
+              <option value="slack">Slack</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="signal">Signal</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Pairing Code</label>
+            <input
+              type="text"
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              placeholder="e.g. abc-123"
+              className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+              autoFocus
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              The user receives this code when they message the bot for the first time.
+            </p>
+          </div>
+          {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          {success && <p className="text-xs text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2">User approved successfully!</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className="text-sm px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={!code.trim() || submitting} className="text-sm px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-40 font-medium transition-colors">
+              {submitting ? 'Approving...' : 'Approve'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function DeleteAgentDialog({ instanceId, agentId, onClose, onDeleted }: {
+  instanceId: string
+  agentId: string
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const [typed, setTyped] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const matches = typed === agentId
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!matches) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/instances/${instanceId}/agents/${agentId}/delete`, { method: 'POST' })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.output || data.error || 'Delete failed')
+      onDeleted()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unknown error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <h3 className="text-base font-semibold text-slate-900 mb-2">Delete Agent</h3>
+        <p className="text-sm text-slate-600 mb-4">
+          This will permanently delete <span className="font-mono font-semibold text-red-600">{agentId}</span> and prune its workspace. Type the agent name to confirm.
+        </p>
+        <form onSubmit={submit} className="space-y-4">
+          <input
+            type="text"
+            value={typed}
+            onChange={e => setTyped(e.target.value)}
+            placeholder={agentId}
+            className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent font-mono"
+            autoFocus
+          />
+          {error && (
+            <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 border border-red-200">{error}</div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="text-sm px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={!matches || submitting} className="text-sm px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 font-medium transition-colors">
+              {submitting ? 'Deleting...' : 'Delete Agent'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

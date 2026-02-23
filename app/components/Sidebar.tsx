@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useDashboard, AgentInfo } from './context/DashboardContext'
+import pkg from '../../package.json'
 
 function AgentItem({ instanceId, agent }: { instanceId: string; agent: AgentInfo }) {
   const { activeInstanceId, activeAgentId, setActiveAgent, checkedAgents, toggleAgentCheck } = useDashboard()
@@ -205,7 +206,7 @@ export function Sidebar() {
       )}
       {treeCollapsed && <div className="flex-1" />}
       <div className="px-4 py-2 border-t border-gray-100">
-        <p className="text-xs text-gray-300">reef v2.3.0</p>
+        <p className="text-xs text-gray-300">reef v{pkg.version}</p>
       </div>
     </aside>
   )

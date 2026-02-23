@@ -1,12 +1,12 @@
 {
   "name": "reef",
-  "version": "0.1.0",
+  "version": "2.4.15",
   "private": true,
   "bin": {
     "reef": "./bin/reef.ts"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "bash bin/dev.sh",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

@@ -29,7 +29,9 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances on Digit
 
 ## Dev server
 
-- Windows requires `node node_modules/next/dist/bin/next dev` (not `npm run dev`) in `.claude/launch.json`
+- **Always restart after any code change** — Turbopack does NOT detect file changes on WSL (`/mnt/c/` has no inotify)
+- Use `./bin/dev.sh` to restart — it kills the old server, clears `.next/` cache, bumps patch version, and starts fresh
+- Never assume hot reload works. Every change requires a restart.
 - `next.config.ts` has `serverExternalPackages: ['ssh2', '@1password/sdk']` for native module compat
 
 ## Gotchas
@@ -40,27 +42,40 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances on Digit
 
 ## CLI
 
-Reef includes a CLI tool for managing instances from the terminal. All commands output JSON to stdout.
+Reef includes a CLI tool for managing OpenClaw instances from the terminal. All commands output JSON to stdout. See `docs/agent-guide.md` for comprehensive reference with examples and troubleshooting workflows.
 
-**Setup:** Run `npm link` in the project root to make `reef` available globally (requires sudo on Linux). Alternatively use `npx reef` from the project directory.
+**Setup:** Run `npm link` in the project root to make `reef` available globally (requires sudo on Linux). Alternatively use `npx reef` from the project directory. Run `reef help` for full command list.
 
-**Instance commands** (use droplet name as instance ID, e.g. `openclaw-dot`):
+**Instance commands** (use droplet name as instance ID, e.g. `openclaw-hal`):
 - `reef instances` — list all discovered instances
 - `reef health <instance>` — process status, disk, memory, uptime
 - `reef agents <instance>` — list agents on an instance
 - `reef status <instance>` — deep diagnostics via `openclaw status --all --deep`
-- `reef doctor <instance>` — run `openclaw doctor --deep --yes` to auto-fix issues
+- `reef doctor <instance>` — run `openclaw doctor` to auto-fix issues
 - `reef restart <instance>` — restart OpenClaw (tries gateway, systemd, then kill)
+- `reef channels <instance>` — list configured channels
+- `reef logs <instance> [--lines N] [--agent <agent>]` — view service logs
 
 **Agent commands** (instance + agent ID):
 - `reef agent-health <instance> <agent>` — agent directory, size, last activity, process status
-- `reef agent-hygiene <instance> <agent>` — error counts, stale files, directory size
 - `reef chat <instance> <agent> <message>` — send a message, get JSON response
-- `reef backup <instance> <agent>` — download agent tarball to `./backups/`
+- `reef create-agent <instance> <name> [--model <model>]` — create new agent
+- `reef delete-agent <instance> <agent>` — delete an agent
 
-**Migration pipeline** (composable steps):
-1. `reef backup <source-instance> <agent>` — creates `./backups/<instance>-<agent>-<timestamp>.tar.gz`
-2. `reef check-backup <path-to-tarball>` — verify integrity, list contents
-3. `reef deploy <dest-instance> <agent> <path-to-tarball>` — push, untar, run doctor
+**Channel commands:**
+- `reef add-channel <instance> <type> <token> [account-id]` — add a channel (e.g. telegram)
+- `reef bind-channel <instance> <agent> <channel> [account-id]` — bind channel to agent
+- `reef approve-pairing <instance> <channel> <code>` — approve a user's pairing code
+- `reef pairing-requests <instance> <channel>` — list pending pairing requests
+
+**Backup & deploy:**
+- `reef backup <instance> <agent>` — download agent tarball to `./backups/`
+- `reef check-backup <tarball>` — verify tarball integrity
+- `reef deploy <instance> <agent> <tarball>` — push, untar, run doctor
+
+**Remote access:**
+- `reef ssh <instance> <command>` — run arbitrary SSH command
+- `reef ls <instance> <path>` — list remote directory contents
+- `reef cat <instance> <path>` — read remote file contents
 
 **Output contract:** Every command returns `{ "success": true|false, ... }`. Errors include an `"error"` field.

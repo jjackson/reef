@@ -16,15 +16,19 @@ describe('getHealth', () => {
       .mockResolvedValueOnce({ stdout: '/ 20G 8G 12G 40%', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: 'Mem: 2G 1G 1G', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: 'up 3 days', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: 'Agents: main', stderr: '', code: 0 })
 
     const result = await getHealth(config)
     expect(result.processRunning).toBe(true)
     expect(result.uptime).toBe('up 3 days')
+    expect(result.output).toContain('=== Gateway ===')
+    expect(result.output).toContain('=== OpenClaw Health ===')
   })
 
   it('returns processRunning: false when gateway status shows stopped', async () => {
     mockRunCommand
       .mockResolvedValueOnce({ stdout: 'Runtime: stopped\n', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
       .mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })

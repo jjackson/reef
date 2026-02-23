@@ -11,7 +11,17 @@ import {
   deployAgent,
   sendChatMessage,
   getAgentHealth,
+  listChannels,
+  addChannel,
+  bindChannel,
+  createAgent,
+  deleteAgent,
+  approvePairing,
+  listPairingRequests,
+  listDirectory,
+  readRemoteFile,
 } from '../lib/openclaw'
+import { runCommand } from '../lib/ssh'
 import { existsSync } from 'fs'
 import { resolve, join } from 'path'
 import { execSync } from 'child_process'
@@ -141,8 +151,163 @@ async function main() {
       break
     }
 
+    case 'channels': {
+      const instance = await requireInstance(args[0])
+      const channels = await listChannels(sshConfig(instance))
+      console.log(JSON.stringify({ success: true, ...channels }))
+      break
+    }
+
+    case 'add-channel': {
+      const [instanceId, channel, token, accountId] = args
+      if (!token) fail('Usage: reef add-channel <instance> <channel-type> <token> [account-id]')
+      const instance = await requireInstance(instanceId)
+      const result = await addChannel(sshConfig(instance), channel, token, accountId)
+      console.log(JSON.stringify(result))
+      break
+    }
+
+    case 'bind-channel': {
+      const [instanceId, agentId, channel, accountId] = args
+      if (!channel) fail('Usage: reef bind-channel <instance> <agent> <channel> [account-id]')
+      const instance = await requireInstance(instanceId)
+      const result = await bindChannel(sshConfig(instance), agentId, channel, accountId)
+      console.log(JSON.stringify(result))
+      break
+    }
+
+    case 'create-agent': {
+      const [instanceId, name, ...rest] = args
+      if (!name) fail('Usage: reef create-agent <instance> <name> [--model <model>]')
+      const instance = await requireInstance(instanceId)
+      const modelIdx = rest.indexOf('--model')
+      const model = modelIdx >= 0 ? rest[modelIdx + 1] : undefined
+      const result = await createAgent(sshConfig(instance), name, { model })
+      console.log(JSON.stringify(result))
+      break
+    }
+
+    case 'delete-agent': {
+      const [instanceId, agentId] = args
+      if (!agentId) fail('Usage: reef delete-agent <instance> <agent>')
+      const instance = await requireInstance(instanceId)
+      const result = await deleteAgent(sshConfig(instance), agentId)
+      console.log(JSON.stringify(result))
+      break
+    }
+
+    case 'approve-pairing': {
+      const [instanceId, channel, code] = args
+      if (!code) fail('Usage: reef approve-pairing <instance> <channel> <code>')
+      const instance = await requireInstance(instanceId)
+      const result = await approvePairing(sshConfig(instance), channel, code)
+      console.log(JSON.stringify(result))
+      break
+    }
+
+    case 'pairing-requests': {
+      const [instanceId, channel] = args
+      if (!channel) fail('Usage: reef pairing-requests <instance> <channel>')
+      const instance = await requireInstance(instanceId)
+      const result = await listPairingRequests(sshConfig(instance), channel)
+      console.log(JSON.stringify(result))
+      break
+    }
+
+    case 'ls': {
+      const [instanceId, remotePath] = args
+      if (!remotePath) fail('Usage: reef ls <instance> <path>')
+      const instance = await requireInstance(instanceId)
+      const entries = await listDirectory(sshConfig(instance), remotePath)
+      console.log(JSON.stringify({ success: true, entries }))
+      break
+    }
+
+    case 'cat': {
+      const [instanceId, remotePath] = args
+      if (!remotePath) fail('Usage: reef cat <instance> <path>')
+      const instance = await requireInstance(instanceId)
+      const content = await readRemoteFile(sshConfig(instance), remotePath)
+      console.log(JSON.stringify({ success: true, content }))
+      break
+    }
+
+    case 'ssh': {
+      const [instanceId, ...cmdParts] = args
+      const cmd = cmdParts.join(' ')
+      if (!cmd) fail('Usage: reef ssh <instance> <command>')
+      const instance = await requireInstance(instanceId)
+      const result = await runCommand(sshConfig(instance), cmd)
+      console.log(JSON.stringify({
+        success: result.code === 0,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.code,
+      }))
+      break
+    }
+
+    case 'logs': {
+      const [instanceId, ...rest] = args
+      if (!instanceId) fail('Usage: reef logs <instance> [--lines N] [--agent <agent>]')
+      const instance = await requireInstance(instanceId)
+      const linesIdx = rest.indexOf('--lines')
+      const lines = linesIdx >= 0 ? parseInt(rest[linesIdx + 1]) || 50 : 50
+      const agentIdx = rest.indexOf('--agent')
+      const agentFilter = agentIdx >= 0 ? rest[agentIdx + 1] : undefined
+      let cmd = `journalctl --user -u openclaw-gateway --no-pager -n ${lines} 2>&1`
+      if (agentFilter) {
+        cmd += ` | grep -i '${agentFilter.replace(/'/g, "'\\''")}'`
+      }
+      const result = await runCommand(sshConfig(instance), cmd)
+      console.log(JSON.stringify({
+        success: true,
+        output: result.stdout + result.stderr,
+        lines,
+      }))
+      break
+    }
+
+    case 'help': {
+      const commands = [
+        'Instance commands:',
+        '  instances                              List all discovered instances',
+        '  health <instance>                      Process status, disk, memory, uptime',
+        '  agents <instance>                      List agents on an instance',
+        '  status <instance>                      Deep diagnostics (openclaw status --all --deep)',
+        '  doctor <instance>                      Run openclaw doctor to auto-fix issues',
+        '  restart <instance>                     Restart OpenClaw service',
+        '  channels <instance>                    List configured channels',
+        '  logs <instance> [--lines N] [--agent X] View service logs',
+        '',
+        'Agent commands:',
+        '  agent-health <instance> <agent>        Agent directory, size, activity, process',
+        '  chat <instance> <agent> <message>      Send message, get JSON response',
+        '  create-agent <instance> <name> [--model M]  Create new agent',
+        '  delete-agent <instance> <agent>        Delete an agent',
+        '',
+        'Channel commands:',
+        '  add-channel <instance> <type> <token> [account]  Add a channel',
+        '  bind-channel <instance> <agent> <channel> [account]  Bind channel to agent',
+        '  approve-pairing <instance> <channel> <code>  Approve user pairing',
+        '  pairing-requests <instance> <channel>  List pending pairing requests',
+        '',
+        'Backup & deploy:',
+        '  backup <instance> <agent>              Download agent tarball',
+        '  check-backup <tarball>                 Verify tarball integrity',
+        '  deploy <instance> <agent> <tarball>    Deploy agent from tarball',
+        '',
+        'Remote access:',
+        '  ssh <instance> <command>               Run arbitrary SSH command',
+        '  ls <instance> <path>                   List remote directory',
+        '  cat <instance> <path>                  Read remote file',
+      ]
+      console.log(commands.join('\n'))
+      break
+    }
+
     default:
-      fail(`Unknown command: ${command ?? '(none)'}. Commands: instances, health, agents, status, doctor, restart, backup, check-backup, deploy, chat, agent-health`)
+      fail(`Unknown command: ${command ?? '(none)'}. Run 'reef help' for usage.`)
   }
 }
 
