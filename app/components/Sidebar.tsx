@@ -32,7 +32,7 @@ function AgentItem({ instanceId, agent }: { instanceId: string; agent: AgentInfo
 }
 
 function MachineItem({ instance }: { instance: { id: string; label: string; ip: string } }) {
-  const { instances, updateInstanceAgents, checkedAgents, toggleInstanceCheck } = useDashboard()
+  const { instances, updateInstanceAgents, checkedAgents, toggleInstanceCheck, setActiveInstance, activeInstanceId, activeAgentId } = useDashboard()
   const [expanded, setExpanded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -90,9 +90,11 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
     }
   }
 
+  const isInstanceActive = activeInstanceId === instance.id && !activeAgentId
+
   return (
     <div>
-      <div className="group flex items-center gap-2 py-1.5 px-2 rounded text-sm hover:bg-gray-100">
+      <div className={`group flex items-center gap-2 py-1.5 px-2 rounded text-sm ${isInstanceActive ? 'bg-blue-50' : 'hover:bg-gray-100'}`}>
         <input
           type="checkbox"
           checked={allChecked}
@@ -102,12 +104,15 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
         />
         <button
           onClick={toggle}
-          className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+          className="text-gray-400 text-xs w-3 text-center flex items-center justify-center shrink-0"
         >
-          <span className="text-gray-400 text-xs w-3 text-center flex items-center justify-center">
-            {loading ? <span className="spinner" /> : expanded ? '\u25BE' : '\u25B8'}
-          </span>
-          <span className="font-semibold text-gray-900 truncate">{instance.label}</span>
+          {loading ? <span className="spinner" /> : expanded ? '\u25BE' : '\u25B8'}
+        </button>
+        <button
+          onClick={() => setActiveInstance(instance.id)}
+          className={`flex-1 min-w-0 text-left truncate font-semibold ${isInstanceActive ? 'text-blue-900' : 'text-gray-900'}`}
+        >
+          {instance.label}
         </button>
         {confirmRestart ? (
           <span className="flex items-center gap-1">
@@ -200,7 +205,7 @@ export function Sidebar() {
       )}
       {treeCollapsed && <div className="flex-1" />}
       <div className="px-4 py-2 border-t border-gray-100">
-        <p className="text-xs text-gray-300">reef v2.2.1</p>
+        <p className="text-xs text-gray-300">reef v2.3.0</p>
       </div>
     </aside>
   )

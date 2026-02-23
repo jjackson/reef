@@ -11,7 +11,6 @@ import {
   deployAgent,
   sendChatMessage,
   getAgentHealth,
-  runAgentHygieneCheck,
 } from '../lib/openclaw'
 import { existsSync } from 'fs'
 import { resolve, join } from 'path'
@@ -142,17 +141,8 @@ async function main() {
       break
     }
 
-    case 'agent-hygiene': {
-      const [instanceId, agentId] = args
-      if (!agentId) fail('Usage: reef agent-hygiene <instance> <agent>')
-      const instance = await requireInstance(instanceId)
-      const result = await runAgentHygieneCheck(sshConfig(instance), agentId)
-      console.log(JSON.stringify({ success: true, ...result }))
-      break
-    }
-
     default:
-      fail(`Unknown command: ${command ?? '(none)'}. Commands: instances, health, agents, status, doctor, restart, backup, check-backup, deploy, chat, agent-health, agent-hygiene`)
+      fail(`Unknown command: ${command ?? '(none)'}. Commands: instances, health, agents, status, doctor, restart, backup, check-backup, deploy, chat, agent-health`)
   }
 }
 

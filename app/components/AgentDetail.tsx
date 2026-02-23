@@ -7,10 +7,10 @@ import { DirectoryNode } from './DirectoryNode'
 import { MigrateDialog } from './MigrateDialog'
 
 interface HealthResult {
+  exists: boolean
+  dirSize: string
+  lastActivity: string
   processRunning: boolean
-  disk: string
-  memory: string
-  uptime: string
 }
 
 type FileMode = 'rendered' | 'raw' | 'edit'
@@ -185,7 +185,6 @@ export function AgentDetail() {
       if (!res.ok) throw new Error(data.error)
       if (action === 'health') setHealth(data)
       if (action === 'backup') alert(`Backup saved: ${data.path}`)
-      if (action === 'hygiene') alert(`Errors: ${data.errorCount}, Stale files: ${data.staleFileCount}, Size: ${data.dirSize}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error')
     } finally {
@@ -195,7 +194,6 @@ export function AgentDetail() {
 
   const actions = [
     { key: 'health', label: 'Health', loadingLabel: 'Checking...', icon: '\u2764' },
-    { key: 'hygiene', label: 'Hygiene', loadingLabel: 'Checking...', icon: '\u2728' },
     { key: 'backup', label: 'Backup', loadingLabel: 'Backing up...', icon: '\u2913' },
   ]
 
@@ -286,16 +284,20 @@ export function AgentDetail() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Uptime</p>
-                  <p className="text-sm font-mono text-slate-700">{health.uptime}</p>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Agent Dir</p>
+                  <p className={`text-sm font-mono ${health.exists ? 'text-slate-700' : 'text-red-500'}`}>
+                    {health.exists ? 'Exists' : 'Missing'}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Disk</p>
-                  <p className="text-sm font-mono text-slate-700">{health.disk}</p>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Dir Size</p>
+                  <p className="text-sm font-mono text-slate-700">{health.dirSize}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Memory</p>
-                  <p className="text-sm font-mono text-slate-700">{health.memory}</p>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Last Activity</p>
+                  <p className="text-sm font-mono text-slate-700">
+                    {health.lastActivity === 'never' ? 'Never' : new Date(health.lastActivity).toLocaleString()}
+                  </p>
                 </div>
               </div>
             </div>

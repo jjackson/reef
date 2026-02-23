@@ -6,7 +6,7 @@ const { mockRunCommand, mockSftpPull } = vi.hoisted(() => ({
 }))
 vi.mock('../ssh', () => ({ runCommand: mockRunCommand, sftpPull: mockSftpPull }))
 
-import { getAgentHealth, runAgentHygieneCheck, backupAgent } from '../openclaw'
+import { getAgentHealth, runDoctor, backupAgent } from '../openclaw'
 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
@@ -39,19 +39,22 @@ describe('getAgentHealth', () => {
   })
 })
 
-describe('runAgentHygieneCheck', () => {
+describe('runDoctor', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('returns hygiene metrics', async () => {
-    mockRunCommand
-      .mockResolvedValueOnce({ stdout: '5\n', stderr: '', code: 0 })
-      .mockResolvedValueOnce({ stdout: '3\n', stderr: '', code: 0 })
-      .mockResolvedValueOnce({ stdout: '1.2G\n', stderr: '', code: 0 })
+  it('returns openclaw doctor output', async () => {
+    mockRunCommand.mockResolvedValueOnce({ stdout: 'Doctor complete.\n', stderr: '', code: 0 })
 
-    const result = await runAgentHygieneCheck(config, 'hal')
-    expect(result.errorCount).toBe(5)
-    expect(result.staleFileCount).toBe(3)
-    expect(result.dirSize).toBe('1.2G')
+    const result = await runDoctor(config)
+    expect(result.output).toContain('Doctor complete.')
+    expect(result.exitCode).toBe(0)
+  })
+
+  it('passes --fix flag when requested', async () => {
+    mockRunCommand.mockResolvedValueOnce({ stdout: 'Fixed.\n', stderr: '', code: 0 })
+
+    await runDoctor(config, { fix: true })
+    expect(mockRunCommand).toHaveBeenCalledWith(config, 'openclaw doctor --fix --non-interactive 2>&1')
   })
 })
 

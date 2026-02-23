@@ -4,7 +4,7 @@ import { runDoctor } from '@/lib/openclaw'
 
 export async function POST(
   _req: Request,
-  { params }: { params: Promise<{ id: string; agentId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
   try {

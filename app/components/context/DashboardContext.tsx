@@ -19,7 +19,7 @@ export interface InstanceWithAgents {
   agents: AgentInfo[]
 }
 
-export type ViewMode = 'detail' | 'chat' | 'file' | 'fleet' | 'broadcast'
+export type ViewMode = 'detail' | 'chat' | 'file' | 'fleet' | 'broadcast' | 'instance'
 
 export interface BroadcastAgent {
   instanceId: string
@@ -49,6 +49,7 @@ interface DashboardState {
   activeInstanceId: string | null
   activeAgentId: string | null
   setActiveAgent: (instanceId: string, agentId: string) => void
+  setActiveInstance: (instanceId: string) => void
   clearActive: () => void
 
   // View mode
@@ -117,6 +118,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     setActiveFile(null)
   }, [])
 
+  const setActiveInstance = useCallback((instanceId: string) => {
+    setActiveInstanceId(instanceId)
+    setActiveAgentId(null)
+    setViewMode('instance')
+    setActiveFile(null)
+  }, [])
+
   const clearActive = useCallback(() => {
     setActiveInstanceId(null)
     setActiveAgentId(null)
@@ -182,7 +190,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   return (
     <DashboardContext.Provider value={{
       instances, setInstances, updateInstanceAgents,
-      activeInstanceId, activeAgentId, setActiveAgent, clearActive,
+      activeInstanceId, activeAgentId, setActiveAgent, setActiveInstance, clearActive,
       viewMode, setViewMode,
       activeFile, setActiveFile,
       dirCache, setDirCache, getDirCache,

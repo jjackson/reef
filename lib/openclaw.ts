@@ -186,12 +186,6 @@ export interface AgentHealthResult {
   processRunning: boolean
 }
 
-export interface AgentHygieneResult {
-  errorCount: number
-  staleFileCount: number
-  dirSize: string
-}
-
 /**
  * Checks the health of a specific agent by examining its directory,
  * size, last activity, and whether a process is running for it.
@@ -220,30 +214,6 @@ export async function getAgentHealth(
     dirSize: sizeResult.stdout.trim(),
     lastActivity,
     processRunning: processResult.stdout.trim() === 'running',
-  }
-}
-
-/**
- * Runs hygiene checks on a specific agent: error counts in logs,
- * stale files, and directory size.
- */
-export async function runAgentHygieneCheck(
-  config: SshConfig,
-  agentId: string
-): Promise<AgentHygieneResult> {
-  const agentDir = `~/.openclaw/agents/${agentId}`
-  const safeDir = agentDir.replace(/^~/, '$HOME')
-
-  const [errorResult, staleResult, sizeResult] = await Promise.all([
-    runCommand(config, `grep -rci 'error\\|exception' ${safeDir}/*.log 2>/dev/null | awk -F: '{s+=$2} END {print s+0}'`),
-    runCommand(config, `find ${safeDir} -type f -mtime +30 2>/dev/null | wc -l`),
-    runCommand(config, `du -sh ${safeDir} 2>/dev/null | cut -f1 || echo "0"`),
-  ])
-
-  return {
-    errorCount: parseInt(errorResult.stdout.trim(), 10) || 0,
-    staleFileCount: parseInt(staleResult.stdout.trim(), 10) || 0,
-    dirSize: sizeResult.stdout.trim(),
   }
 }
 
@@ -397,10 +367,11 @@ export interface DoctorResult {
 }
 
 /**
- * Runs `openclaw doctor --deep --yes` to auto-diagnose and fix issues.
+ * Runs `openclaw doctor` for diagnostics. Use --non-interactive for read-only checks.
  */
-export async function runDoctor(config: SshConfig): Promise<DoctorResult> {
-  const result = await runCommand(config, 'openclaw doctor --deep --yes 2>&1')
+export async function runDoctor(config: SshConfig, options?: { fix?: boolean }): Promise<DoctorResult> {
+  const flags = options?.fix ? '--fix --non-interactive' : '--non-interactive'
+  const result = await runCommand(config, `openclaw doctor ${flags} 2>&1`)
   return { output: result.stdout + result.stderr, exitCode: result.code }
 }
 

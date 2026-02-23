@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useDashboard } from './components/context/DashboardContext'
 import { Sidebar } from './components/Sidebar'
 import { AgentDetail } from './components/AgentDetail'
+import { InstanceDetail } from './components/InstanceDetail'
 import { ChatPanel } from './components/ChatPanel'
 import { FleetPanel } from './components/FleetPanel'
 import { BroadcastPanel } from './components/BroadcastPanel'
@@ -26,6 +27,7 @@ export default function DashboardPage() {
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
       <main className="flex-1 overflow-hidden">
+        {viewMode === 'instance' && <InstanceDetail />}
         {(viewMode === 'detail' || viewMode === 'file') && <AgentDetail />}
         {viewMode === 'chat' && <ChatPanel />}
         {viewMode === 'fleet' && <FleetPanel />}
