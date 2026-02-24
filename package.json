@@ -1,11 +1,12 @@
 {
   "name": "reef",
-  "version": "2.4.15",
+  "version": "2.4.27",
   "private": true,
   "bin": {
     "reef": "./bin/reef.ts"
   },
   "scripts": {
+    "prepare": "next-ws patch",
     "dev": "bash bin/dev.sh",
     "build": "next build",
     "start": "next start",
@@ -15,12 +16,16 @@
   },
   "dependencies": {
     "@1password/sdk": "^0.4.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "next": "16.1.6",
+    "next-ws": "^2.1.16",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",
     "ssh2": "^1.17.0",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -28,6 +33,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/ssh2": "^1.15.5",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.4",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",

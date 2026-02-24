@@ -5,6 +5,7 @@ import Markdown from 'react-markdown'
 import { useDashboard } from './context/DashboardContext'
 import { DirectoryNode } from './DirectoryNode'
 import { MigrateDialog } from './MigrateDialog'
+import { TerminalPanel } from './Terminal'
 
 interface HealthResult {
   exists: boolean
@@ -159,11 +160,19 @@ export function AgentDetail() {
   const [showMigrate, setShowMigrate] = useState(false)
   const [showBindChannel, setShowBindChannel] = useState(false)
   const [showApproveUser, setShowApproveUser] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [showTerminal, setShowTerminal] = useState(false)
+  const [terminalCommand, setTerminalCommand] = useState<string | undefined>()
+  const [terminalKey, setTerminalKey] = useState(0)
+  const [showEmailSetup, setShowEmailSetup] = useState(false)
 
   const instance = instances.find(i => i.id === activeInstanceId)
   const agent = instance?.agents.find(a => a.id === activeAgentId)
+
+  function openTerminal(command?: string) {
+    setTerminalCommand(command)
+    setTerminalKey(k => k + 1)
+    setShowTerminal(true)
+  }
 
   if (!instance || !agent) {
     return (
@@ -231,12 +240,11 @@ export function AgentDetail() {
                 </span>
               )}
               <button
-                onClick={() => setConfirmDelete(true)}
-                disabled={deleteLoading}
-                className="text-[11px] px-2 py-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors font-medium"
-                title="Delete agent"
+                onClick={() => openTerminal(`openclaw agents delete ${agent.id}`)}
+                className="text-[11px] px-2 py-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors font-medium"
+                title="Remove agent"
               >
-                {deleteLoading ? 'Deleting...' : 'Delete'}
+                Remove
               </button>
             </div>
           </div>
@@ -282,91 +290,115 @@ export function AgentDetail() {
             className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-colors font-medium"
           >
             <span className="opacity-60">&#x2713;</span>
-            Approve User
+            Approve Telegram User
+          </button>
+          <div className="w-px h-5 bg-slate-200 mx-1" />
+          <button
+            onClick={() => setShowEmailSetup(true)}
+            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-colors font-medium"
+          >
+            <span className="opacity-60">{'\u2709'}</span>
+            Setup Email
           </button>
         </div>
       </div>
 
-      {/* Content area — split layout when file is open */}
-      <div className="flex-1 flex min-h-0">
-        {/* Left: workspace tree + health + errors */}
-        <div className={`${activeFile ? 'w-72 border-r border-slate-200' : 'flex-1'} overflow-y-auto p-5 space-y-4 shrink-0 transition-all`}>
-          {/* Error banner */}
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
+      {/* Content area */}
+      {showTerminal ? (
+        <TerminalPanel
+          key={`${instance.id}-${terminalKey}`}
+          instanceId={instance.id}
+          onClose={() => {
+            setShowTerminal(false)
+            // Refresh agents list in case agent was deleted
+            fetch(`/api/instances/${instance.id}/agents`)
+              .then(res => res.ok ? res.json() : [])
+              .then(data => updateInstanceAgents(instance.id, data))
+              .catch(() => {})
+          }}
+          initialCommand={terminalCommand}
+        />
+      ) : (
+        <div className="flex-1 flex min-h-0">
+          {/* Left: workspace tree + health + errors */}
+          <div className={`${activeFile ? 'w-72 border-r border-slate-200' : 'flex-1'} overflow-y-auto p-5 space-y-4 shrink-0 transition-all`}>
+            {/* Error banner */}
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
 
-          {/* Health card */}
-          {health && (
+            {/* Health card */}
+            {health && (
+              <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="px-4 py-2.5 border-b border-slate-100">
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Health</h3>
+                </div>
+                <div className={`px-4 py-3 grid ${activeFile ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
+                  <div>
+                    <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Process</p>
+                    <p className={`text-sm font-mono font-medium ${health.processRunning ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {health.processRunning ? 'Running' : 'Stopped'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Agent Dir</p>
+                    <p className={`text-sm font-mono ${health.exists ? 'text-slate-700' : 'text-red-500'}`}>
+                      {health.exists ? 'Exists' : 'Missing'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Dir Size</p>
+                    <p className="text-sm font-mono text-slate-700">{health.dirSize}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Last Activity</p>
+                    <p className="text-sm font-mono text-slate-700">
+                      {health.lastActivity === 'never' ? 'Never' : new Date(health.lastActivity).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Workspace card */}
             <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-              <div className="px-4 py-2.5 border-b border-slate-100">
-                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Health</h3>
+              <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Workspace</h3>
+                {!activeFile && (
+                  <span className="text-[11px] text-slate-400 font-mono">{workspacePath}</span>
+                )}
               </div>
-              <div className={`px-4 py-3 grid ${activeFile ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
-                <div>
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Process</p>
-                  <p className={`text-sm font-mono font-medium ${health.processRunning ? 'text-emerald-600' : 'text-red-500'}`}>
-                    {health.processRunning ? 'Running' : 'Stopped'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Agent Dir</p>
-                  <p className={`text-sm font-mono ${health.exists ? 'text-slate-700' : 'text-red-500'}`}>
-                    {health.exists ? 'Exists' : 'Missing'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Dir Size</p>
-                  <p className="text-sm font-mono text-slate-700">{health.dirSize}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-0.5">Last Activity</p>
-                  <p className="text-sm font-mono text-slate-700">
-                    {health.lastActivity === 'never' ? 'Never' : new Date(health.lastActivity).toLocaleString()}
-                  </p>
-                </div>
+              <div className="py-1.5 px-1">
+                <DirectoryNode
+                  instanceId={instance.id}
+                  path={workspacePath}
+                  name={workspacePath.split('/').pop() || 'workspace'}
+                  type="directory"
+                  depth={0}
+                  onFileClick={(path, name) => {
+                    setActiveFile({ path, name })
+                  }}
+                />
               </div>
             </div>
-          )}
+          </div>
 
-          {/* Workspace card */}
-          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Workspace</h3>
-              {!activeFile && (
-                <span className="text-[11px] text-slate-400 font-mono">{workspacePath}</span>
-              )}
-            </div>
-            <div className="py-1.5 px-1">
-              <DirectoryNode
-                instanceId={instance.id}
-                path={workspacePath}
-                name={workspacePath.split('/').pop() || 'workspace'}
-                type="directory"
-                depth={0}
-                onFileClick={(path, name) => {
-                  setActiveFile({ path, name })
-                }}
+          {/* Right: file viewer (only when a file is selected) */}
+          {activeFile && activeInstanceId && (
+            <div className="flex-1 bg-white min-w-0">
+              <InlineFileViewer
+                key={activeFile.path}
+                instanceId={activeInstanceId}
+                path={activeFile.path}
+                name={activeFile.name}
+                onClose={() => setActiveFile(null)}
               />
             </div>
-          </div>
+          )}
         </div>
-
-        {/* Right: file viewer (only when a file is selected) */}
-        {activeFile && activeInstanceId && (
-          <div className="flex-1 bg-white min-w-0">
-            <InlineFileViewer
-              key={activeFile.path}
-              instanceId={activeInstanceId}
-              path={activeFile.path}
-              name={activeFile.name}
-              onClose={() => setActiveFile(null)}
-            />
-          </div>
-        )}
-      </div>
+      )}
 
       {showMigrate && instance && agent && (
         <MigrateDialog
@@ -392,21 +424,22 @@ export function AgentDetail() {
         />
       )}
 
-      {confirmDelete && instance && agent && (
-        <DeleteAgentDialog
-          instanceId={instance.id}
-          agentId={agent.id}
-          onClose={() => setConfirmDelete(false)}
-          onDeleted={async () => {
-            setConfirmDelete(false)
-            setDeleteLoading(true)
+      {showEmailSetup && instance && (
+        <EmailSetupDialog
+          onClose={() => setShowEmailSetup(false)}
+          onSubmit={async (email) => {
+            setShowEmailSetup(false)
             try {
-              const listRes = await fetch(`/api/instances/${instance.id}/agents`)
-              const agents = listRes.ok ? await listRes.json() : []
-              updateInstanceAgents(instance.id, agents)
-              setActiveInstance(instance.id)
-            } finally {
-              setDeleteLoading(false)
+              const res = await fetch(`/api/instances/${instance.id}/email-setup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, agentId: agent?.id }),
+              })
+              const data = await res.json()
+              if (!data.success) throw new Error(data.error || 'Failed to upload email setup script')
+              openTerminal('bash /tmp/reef-email-setup.sh')
+            } catch (e) {
+              setError(e instanceof Error ? e.message : 'Failed to start email setup')
             }
           }}
         />
@@ -572,7 +605,7 @@ function ApproveUserDialog({ instanceId, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h3 className="text-base font-semibold text-slate-900 mb-2">Approve User</h3>
+        <h3 className="text-base font-semibold text-slate-900 mb-2">Approve Telegram User</h3>
         <p className="text-xs text-slate-500 mb-4 leading-relaxed">
           To authorize a user, they must first message the bot on Telegram. OpenClaw will reply with a
           <strong> pairing code</strong>. Enter that code below to approve them.
@@ -622,60 +655,44 @@ function ApproveUserDialog({ instanceId, onClose }: {
   )
 }
 
-function DeleteAgentDialog({ instanceId, agentId, onClose, onDeleted }: {
-  instanceId: string
-  agentId: string
+function EmailSetupDialog({ onClose, onSubmit }: {
   onClose: () => void
-  onDeleted: () => void
+  onSubmit: (email: string) => void
 }) {
-  const [typed, setTyped] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
 
-  const matches = typed === agentId
-
-  async function submit(e: React.FormEvent) {
+  function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!matches) return
-    setSubmitting(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/instances/${instanceId}/agents/${agentId}/delete`, { method: 'POST' })
-      const data = await res.json()
-      if (!data.success) throw new Error(data.output || data.error || 'Delete failed')
-      onDeleted()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error')
-    } finally {
-      setSubmitting(false)
-    }
+    if (!email.trim()) return
+    onSubmit(email.trim())
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h3 className="text-base font-semibold text-slate-900 mb-2">Delete Agent</h3>
-        <p className="text-sm text-slate-600 mb-4">
-          This will permanently delete <span className="font-mono font-semibold text-red-600">{agentId}</span> and prune its workspace. Type the agent name to confirm.
+        <h3 className="text-base font-semibold text-slate-900 mb-2">Setup Email (Gmail via GOG)</h3>
+        <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+          This will run <code className="bg-slate-100 px-1 rounded">gog auth add</code> and <code className="bg-slate-100 px-1 rounded">openclaw webhooks gmail setup</code> in the terminal.
+          You&apos;ll need to complete the OAuth flow interactively.
         </p>
         <form onSubmit={submit} className="space-y-4">
-          <input
-            type="text"
-            value={typed}
-            onChange={e => setTyped(e.target.value)}
-            placeholder={agentId}
-            className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent font-mono"
-            autoFocus
-          />
-          {error && (
-            <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 border border-red-200">{error}</div>
-          )}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Gmail Address</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="e.g. hal@dimagi-ai.com"
+              className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+              autoFocus
+            />
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="text-sm px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={!matches || submitting} className="text-sm px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 font-medium transition-colors">
-              {submitting ? 'Deleting...' : 'Delete Agent'}
+            <button type="submit" disabled={!email.trim()} className="text-sm px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-40 font-medium transition-colors">
+              Open Terminal
             </button>
           </div>
         </form>
@@ -683,3 +700,4 @@ function DeleteAgentDialog({ instanceId, agentId, onClose, onDeleted }: {
     </div>
   )
 }
+

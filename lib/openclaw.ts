@@ -5,6 +5,7 @@ export interface HealthResult {
   disk: string
   memory: string
   uptime: string
+  version: string
   output: string
 }
 
@@ -35,21 +36,30 @@ export interface ChatResponse {
  * Runs four commands in parallel: process check, disk, memory, uptime.
  */
 export async function getHealth(config: SshConfig): Promise<HealthResult> {
-  const [gatewayResult, diskResult, memResult, uptimeResult, openclawHealth] = await Promise.all([
+  const [gatewayResult, diskResult, memResult, uptimeResult, openclawHealth, versionResult] = await Promise.all([
     runCommand(config, 'openclaw gateway status 2>&1'),
     runCommand(config, 'df -h /'),
     runCommand(config, 'free -h'),
     runCommand(config, 'uptime -p'),
     runCommand(config, 'openclaw health 2>&1'),
+    runCommand(config, 'openclaw --version 2>&1'),
   ])
 
   // Parse "Runtime: running (pid NNN, state active, ...)" from gateway status output
   const runtimeLine = gatewayResult.stdout.match(/Runtime:\s*(\S+)/)
   const processRunning = runtimeLine?.[1] === 'running'
 
+  // Parse version from `openclaw --version` output (e.g. "2026.2.22-2" or "OpenClaw v2026.2.22-2")
+  const versionRaw = versionResult.stdout.trim()
+  const versionMatch = versionRaw.match(/(\d{4}\.\d+\.\d+(?:-\d+)?)/)
+  const version = versionMatch?.[1] || versionRaw.split('\n')[0] || ''
+
   const output = [
     '=== Gateway ===',
     gatewayResult.stdout.trim(),
+    '',
+    '=== Version ===',
+    version || '(unknown)',
     '',
     '=== Disk ===',
     diskResult.stdout.trim(),
@@ -69,6 +79,7 @@ export async function getHealth(config: SshConfig): Promise<HealthResult> {
     disk: diskResult.stdout.trim(),
     memory: memResult.stdout.trim(),
     uptime: uptimeResult.stdout.trim(),
+    version,
     output,
   }
 }
