@@ -66,7 +66,9 @@ export function getGlobalNameMap(): Record<string, string> {
 export function addToNameMap(accountId: string, dropletName: string, botName: string): void {
   const settingsPath = join(process.cwd(), 'config', 'settings.json')
   const settings = loadSettings()
-  if (!settings.accounts[accountId]) return
+  if (!settings.accounts[accountId]) {
+    settings.accounts[accountId] = { tokenRef: '', nameMap: {} }
+  }
   settings.accounts[accountId].nameMap[dropletName] = botName
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n')
   cached = settings
