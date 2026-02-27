@@ -36,10 +36,14 @@ yarn-error.log*
 
 # instance-specific config
 config/name-map.json
+config/settings.json
 
 # backups
 backups/*
 !backups/.gitkeep
+
+# worktrees
+.worktrees/
 
 # vercel
 .vercel

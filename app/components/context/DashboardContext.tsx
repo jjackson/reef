@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react'
 
 export interface AgentInfo {
   id: string
@@ -16,7 +16,15 @@ export interface InstanceWithAgents {
   id: string
   label: string
   ip: string
+  accountId: string
   agents: AgentInfo[]
+}
+
+export interface AccountWithInstances {
+  id: string
+  label: string
+  instances: InstanceWithAgents[]
+  collapsed: boolean
 }
 
 export type ViewMode = 'detail' | 'chat' | 'file' | 'fleet' | 'broadcast' | 'instance'
@@ -42,7 +50,10 @@ interface FileEntry {
 interface DashboardState {
   // Data
   instances: InstanceWithAgents[]
+  accounts: AccountWithInstances[]
   setInstances: (instances: InstanceWithAgents[]) => void
+  setAccountInstances: (accountId: string, label: string, instances: InstanceWithAgents[]) => void
+  toggleAccountCollapse: (accountId: string) => void
   updateInstanceAgents: (instanceId: string, agents: AgentInfo[]) => void
 
   // Active selection (what's shown in main panel)
@@ -87,7 +98,7 @@ export function useDashboard() {
 }
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
-  const [instances, setInstances] = useState<InstanceWithAgents[]>([])
+  const [accounts, setAccounts] = useState<AccountWithInstances[]>([])
   const [activeInstanceId, setActiveInstanceId] = useState<string | null>(null)
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('detail')
@@ -97,6 +108,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [broadcastAgents, setBroadcastAgents] = useState<BroadcastAgent[]>([])
   const [dirCache] = useState<Map<string, FileEntry[]>>(new Map())
 
+  // Derive flat instances list from accounts for backward compat
+  const instances = useMemo(() => accounts.flatMap(a => a.instances), [accounts])
+
   const setDirCache = useCallback((instanceId: string, path: string, entries: FileEntry[]) => {
     dirCache.set(`${instanceId}:${path}`, entries)
   }, [dirCache])
@@ -105,10 +119,47 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     return dirCache.get(`${instanceId}:${path}`)
   }, [dirCache])
 
-  const updateInstanceAgents = useCallback((instanceId: string, agents: AgentInfo[]) => {
-    setInstances(prev => prev.map(inst =>
-      inst.id === instanceId ? { ...inst, agents } : inst
+  // Backward-compat: setInstances groups by accountId into accounts
+  const setInstances = useCallback((newInstances: InstanceWithAgents[]) => {
+    const grouped = new Map<string, InstanceWithAgents[]>()
+    for (const inst of newInstances) {
+      const accountId = inst.accountId || 'default'
+      if (!grouped.has(accountId)) grouped.set(accountId, [])
+      grouped.get(accountId)!.push(inst)
+    }
+    const newAccounts: AccountWithInstances[] = []
+    for (const [id, insts] of grouped) {
+      newAccounts.push({ id, label: id === 'default' ? 'Default' : id, instances: insts, collapsed: false })
+    }
+    setAccounts(newAccounts)
+  }, [])
+
+  // Upsert an account entry
+  const setAccountInstances = useCallback((accountId: string, label: string, accountInstances: InstanceWithAgents[]) => {
+    setAccounts(prev => {
+      const existing = prev.findIndex(a => a.id === accountId)
+      if (existing >= 0) {
+        const next = [...prev]
+        next[existing] = { ...next[existing], label, instances: accountInstances }
+        return next
+      }
+      return [...prev, { id: accountId, label, instances: accountInstances, collapsed: false }]
+    })
+  }, [])
+
+  const toggleAccountCollapse = useCallback((accountId: string) => {
+    setAccounts(prev => prev.map(a =>
+      a.id === accountId ? { ...a, collapsed: !a.collapsed } : a
     ))
+  }, [])
+
+  const updateInstanceAgents = useCallback((instanceId: string, agents: AgentInfo[]) => {
+    setAccounts(prev => prev.map(acct => ({
+      ...acct,
+      instances: acct.instances.map(inst =>
+        inst.id === instanceId ? { ...inst, agents } : inst
+      ),
+    })))
   }, [])
 
   const setActiveAgent = useCallback((instanceId: string, agentId: string) => {
@@ -189,7 +240,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   return (
     <DashboardContext.Provider value={{
-      instances, setInstances, updateInstanceAgents,
+      instances, accounts, setInstances, setAccountInstances, toggleAccountCollapse, updateInstanceAgents,
       activeInstanceId, activeAgentId, setActiveAgent, setActiveInstance, clearActive,
       viewMode, setViewMode,
       activeFile, setActiveFile,

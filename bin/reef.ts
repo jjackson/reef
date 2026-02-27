@@ -23,6 +23,7 @@ import {
   setApiKey,
 } from '../lib/openclaw'
 import { runCommand } from '../lib/ssh'
+import { createMachine } from '../lib/create-machine'
 import { existsSync } from 'fs'
 import { resolve, join } from 'path'
 import { execSync } from 'child_process'
@@ -52,7 +53,7 @@ async function main() {
       const instances = await listInstances()
       console.log(JSON.stringify({
         success: true,
-        instances: instances.map(i => ({ id: i.id, label: i.label, ip: i.ip })),
+        instances: instances.map(i => ({ id: i.id, label: i.label, ip: i.ip, account: i.accountId })),
       }))
       break
     }
@@ -283,6 +284,35 @@ async function main() {
       break
     }
 
+    case 'migrate-ssh-keys': {
+      const { migrateSshKeysToSshKeyType } = await import('../lib/1password')
+      const result = await migrateSshKeysToSshKeyType()
+      console.log(JSON.stringify({ success: true, ...result }))
+      break
+    }
+
+    case 'create-machine': {
+      const [name, ...rest] = args
+      if (!name) fail('Usage: reef create-machine <droplet-name> [--account <name>] [--region <slug>] [--size <slug>] [--ssh-key new|<1pass-title>]')
+      const regionIdx = rest.indexOf('--region')
+      const sizeIdx = rest.indexOf('--size')
+      const sshKeyIdx = rest.indexOf('--ssh-key')
+      const accountIdx = rest.indexOf('--account')
+      const accountId = accountIdx >= 0 ? rest[accountIdx + 1] : undefined
+
+      const { getAccountToken } = await import('../lib/instances')
+      const doToken = await getAccountToken(accountId || 'default')
+
+      const result = await createMachine(name, doToken, {
+        region: regionIdx >= 0 ? rest[regionIdx + 1] : undefined,
+        size: sizeIdx >= 0 ? rest[sizeIdx + 1] : undefined,
+        sshKey: sshKeyIdx >= 0 ? rest[sshKeyIdx + 1] : undefined,
+        accountId,
+      })
+      console.log(JSON.stringify(result))
+      break
+    }
+
     case 'help': {
       const commands = [
         'Instance commands:',
@@ -314,6 +344,13 @@ async function main() {
         '  backup <instance> <agent>              Download agent tarball',
         '  check-backup <tarball>                 Verify tarball integrity',
         '  deploy <instance> <agent> <tarball>    Deploy agent from tarball',
+        '',
+        'Machine provisioning:',
+        '  create-machine <name> [--account A] [--region R] [--size S] [--ssh-key new|<title>]',
+        '                                         Provision new DO droplet with SSH key',
+        '',
+        'Migration:',
+        '  migrate-ssh-keys                       Migrate SSH keys from Secure Notes to SshKey items',
         '',
         'Remote access:',
         '  ssh <instance> <command>               Run arbitrary SSH command',

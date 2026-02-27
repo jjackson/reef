@@ -3,6 +3,7 @@ import { loadEnv } from './env'
 import { getSecret } from './1password'
 import { listOpenClawDroplets } from './digitalocean'
 import { getBotName } from './mapping'
+import { getAccounts } from './settings'
 
 export interface Instance {
   id: string       // DO droplet name (used as stable ID)
@@ -10,18 +11,13 @@ export interface Instance {
   ip: string
   dropletId: number
   sshKeyRef: string // op:// reference — not the key itself
+  accountId: string // which DO account owns this instance
 }
 
 export interface ResolvedInstance extends Instance {
   sshKey: string   // Actual private key value
 }
 
-/**
- * Resolves the SSH private key from one of three sources (in priority order):
- *   1. SSH_PRIVATE_KEY env var (raw key contents)
- *   2. SSH_KEY_PATH env var (path to key file, e.g. ~/.ssh/id_rsa)
- *   3. 1Password op:// reference (requires OP_SERVICE_ACCOUNT_TOKEN)
- */
 async function resolveSSHKey(opRef: string): Promise<string> {
   if (process.env.SSH_PRIVATE_KEY) {
     return process.env.SSH_PRIVATE_KEY
@@ -35,11 +31,42 @@ async function resolveSSHKey(opRef: string): Promise<string> {
   return getSecret(opRef)
 }
 
+async function resolveToken(tokenRef: string): Promise<string> {
+  if (tokenRef.startsWith('op://')) {
+    return getSecret(tokenRef)
+  }
+  return tokenRef
+}
+
 export async function listInstances(): Promise<Instance[]> {
   loadEnv()
-  // Use DO_API_TOKEN directly if set, otherwise resolve via 1Password
-  const doToken = process.env.DO_API_TOKEN
-    || await getSecret(process.env.DO_API_TOKEN_OP_REF!)
+
+  const accounts = getAccounts()
+
+  // If no accounts configured, fall back to legacy env var behavior
+  if (accounts.length === 0) {
+    const doToken = process.env.DO_API_TOKEN
+      || await getSecret(process.env.DO_API_TOKEN_OP_REF!)
+    return listInstancesForAccount('default', doToken)
+  }
+
+  // Fetch instances from all accounts in parallel
+  const results = await Promise.all(
+    accounts.map(async (account) => {
+      try {
+        const token = await resolveToken(account.tokenRef)
+        return await listInstancesForAccount(account.id, token)
+      } catch (err) {
+        console.warn(`[reef] Failed to list instances for account "${account.id}": ${err instanceof Error ? err.message : err}`)
+        return []
+      }
+    })
+  )
+
+  return results.flat()
+}
+
+async function listInstancesForAccount(accountId: string, doToken: string): Promise<Instance[]> {
   const droplets = await listOpenClawDroplets(doToken)
 
   return droplets
@@ -55,6 +82,7 @@ export async function listInstances(): Promise<Instance[]> {
         ip: droplet.ip,
         dropletId: droplet.id,
         sshKeyRef: `op://AI-Agents/${opName} - SSH Key/private key`,
+        accountId,
       }
     })
     .filter((i): i is Instance => i !== null)
@@ -65,10 +93,6 @@ export async function getInstance(id: string): Promise<Instance | null> {
   return instances.find((i) => i.id === id) ?? null
 }
 
-/**
- * Like getInstance, but also fetches the SSH private key.
- * Tries SSH_PRIVATE_KEY env, then SSH_KEY_PATH file, then 1Password.
- */
 export async function resolveInstance(id: string): Promise<ResolvedInstance | null> {
   const instance = await getInstance(id)
   if (!instance) return null
@@ -78,8 +102,18 @@ export async function resolveInstance(id: string): Promise<ResolvedInstance | nu
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     if (msg.includes('secret reference') || msg.includes('no item matched')) {
-      throw new Error(`No SSH key found for ${instance.label} in 1Password. Expected item: "${instance.sshKeyRef.split('/')[2]}" in the AI-Agents vault.`)
+      throw new Error(`No SSH key found for ${instance.label} in 1Password. Expected item: "${instance.sshKeyRef.split('/')[3]}" in the AI-Agents vault.`)
     }
     throw err
   }
+}
+
+export async function getAccountToken(accountId: string): Promise<string> {
+  loadEnv()
+  const accounts = getAccounts()
+  const account = accounts.find(a => a.id === accountId)
+  if (account) {
+    return resolveToken(account.tokenRef)
+  }
+  return process.env.DO_API_TOKEN || await getSecret(process.env.DO_API_TOKEN_OP_REF!)
 }

@@ -1,9 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('fs', () => ({
-  existsSync: vi.fn(() => true),
-  readFileSync: vi.fn(() => JSON.stringify({
-    '__comment': 'ignored',
+vi.mock('../settings', () => ({
+  getGlobalNameMap: vi.fn(() => ({
     'open-claw-hal': 'hal-override',
     'dot-openclaw': 'Dot',
   })),

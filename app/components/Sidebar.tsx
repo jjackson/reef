@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useDashboard, AgentInfo } from './context/DashboardContext'
+import { useDashboard, AgentInfo, AccountWithInstances } from './context/DashboardContext'
 import pkg from '../../package.json'
 
 function AgentItem({ instanceId, agent }: { instanceId: string; agent: AgentInfo }) {
@@ -116,7 +116,7 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
           className="opacity-0 group-hover:opacity-100 text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 disabled:opacity-40 transition-opacity"
           title="Refresh agents"
         >
-          {refreshing ? '...' : '↻'}
+          {refreshing ? '...' : '\u21BB'}
         </button>
       </div>
       {expanded && (
@@ -136,8 +136,32 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
   )
 }
 
+function AccountGroup({ account }: { account: AccountWithInstances }) {
+  const { toggleAccountCollapse } = useDashboard()
+
+  return (
+    <div>
+      <button
+        onClick={() => toggleAccountCollapse(account.id)}
+        className="w-full flex items-center gap-2 px-2 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide hover:bg-gray-50 rounded"
+      >
+        <span className="text-[10px]">{account.collapsed ? '\u25B8' : '\u25BE'}</span>
+        <span className="truncate">{account.label}</span>
+        <span className="ml-auto text-gray-300 font-normal normal-case">{account.instances.length}</span>
+      </button>
+      {!account.collapsed && (
+        <div className="space-y-0.5">
+          {account.instances.map(inst => (
+            <MachineItem key={inst.id} instance={inst} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function Sidebar() {
-  const { instances, checkedAgents, toggleAll } = useDashboard()
+  const { accounts, instances, checkedAgents, toggleAll } = useDashboard()
   const [treeCollapsed, setTreeCollapsed] = useState(false)
   const allAgents = instances.flatMap(i => i.agents.map(a => `${i.id}:${a.id}`))
   const allChecked = allAgents.length > 0 && allAgents.every(k => checkedAgents.has(k))
@@ -168,9 +192,15 @@ export function Sidebar() {
       </div>
       {!treeCollapsed && (
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {instances.map(inst => (
-            <MachineItem key={inst.id} instance={inst} />
-          ))}
+          {accounts.length > 1 ? (
+            accounts.map(acct => (
+              <AccountGroup key={acct.id} account={acct} />
+            ))
+          ) : (
+            instances.map(inst => (
+              <MachineItem key={inst.id} instance={inst} />
+            ))
+          )}
           {instances.length === 0 && (
             <p className="text-xs text-gray-400 italic px-2 py-4">Loading...</p>
           )}
