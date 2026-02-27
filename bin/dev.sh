@@ -12,7 +12,7 @@ fuser -k 3002/tcp 2>/dev/null && echo "Killed existing server on :3002" && sleep
 
 # Update WSL2 port forward (IP changes on each WSL restart)
 WSL_IP=$(hostname -I | awk '{print $1}')
-powershell.exe -c "Start-Process powershell -Verb RunAs -ArgumentList '-Command netsh interface portproxy add v4tov4 listenport=3002 listenaddress=0.0.0.0 connectport=3002 connectaddress=$WSL_IP'" 2>/dev/null && echo "Port forward: 0.0.0.0:3002 -> $WSL_IP:3002" || true
+powershell.exe -c "Start-Process powershell -Verb RunAs -ArgumentList '-Command netsh interface portproxy delete v4tov4 listenport=3002 listenaddress=0.0.0.0 2>\`\$null; netsh interface portproxy add v4tov4 listenport=3002 listenaddress=0.0.0.0 connectport=3002 connectaddress=$WSL_IP'" 2>/dev/null && echo "Port forward: 0.0.0.0:3002 -> $WSL_IP:3002" || true
 
 # Clear Turbopack cache
 rm -rf .next

@@ -23,7 +23,10 @@ export async function POST(
       return NextResponse.json({ success: false, error: `Failed to upload script: ${writeResult.stderr}` }, { status: 500 })
     }
 
-    await runCommand(config, 'chmod +x /tmp/reef-install-openclaw.sh')
+    const chmodResult = await runCommand(config, 'chmod +x /tmp/reef-install-openclaw.sh')
+    if (chmodResult.code !== 0) {
+      return NextResponse.json({ success: false, error: `Failed to make script executable: ${chmodResult.stderr}` }, { status: 500 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
