@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useDashboard } from './components/context/DashboardContext'
+import { useDashboard, InstanceWithAgents } from './components/context/DashboardContext'
 import { Sidebar } from './components/Sidebar'
 import { AgentDetail } from './components/AgentDetail'
 import { InstanceDetail } from './components/InstanceDetail'
@@ -10,14 +10,40 @@ import { FleetPanel } from './components/FleetPanel'
 import { BroadcastPanel } from './components/BroadcastPanel'
 
 export default function DashboardPage() {
-  const { instances, setInstances, viewMode, setViewMode, checkedAgents } = useDashboard()
+  const { instances, setAccountInstances, viewMode, setViewMode, checkedAgents } = useDashboard()
 
   useEffect(() => {
-    fetch('/api/instances')
-      .then(res => res.ok ? res.json() : [])
-      .then(data => setInstances(data.map((inst: any) => ({ ...inst, agents: [] }))))
-      .catch(() => {})
-  }, [setInstances])
+    const loadData = async () => {
+      try {
+        const [accountsRes, instancesRes] = await Promise.all([
+          fetch('/api/accounts'),
+          fetch('/api/instances'),
+        ])
+        const accountsData = accountsRes.ok ? await accountsRes.json() : { accounts: [] }
+        const instancesData = instancesRes.ok ? await instancesRes.json() : []
+
+        // Group instances by accountId
+        const grouped = new Map<string, InstanceWithAgents[]>()
+        for (const inst of instancesData) {
+          const accountId = inst.accountId || 'default'
+          if (!grouped.has(accountId)) grouped.set(accountId, [])
+          grouped.get(accountId)!.push({ ...inst, agents: [] })
+        }
+
+        // Set each account's instances
+        for (const acct of accountsData.accounts) {
+          setAccountInstances(acct.id, acct.label, grouped.get(acct.id) || [])
+        }
+
+        // Handle instances with no matching account (legacy/default)
+        const defaultInstances = grouped.get('default')
+        if (defaultInstances?.length) {
+          setAccountInstances('default', 'Default', defaultInstances)
+        }
+      } catch {}
+    }
+    loadData()
+  }, [setAccountInstances])
 
   useEffect(() => {
     if (checkedAgents.size >= 2 && viewMode !== 'broadcast') setViewMode('fleet')
