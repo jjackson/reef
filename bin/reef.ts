@@ -20,6 +20,7 @@ import {
   listPairingRequests,
   listDirectory,
   readRemoteFile,
+  setApiKey,
 } from '../lib/openclaw'
 import { runCommand } from '../lib/ssh'
 import { existsSync } from 'fs'
@@ -247,6 +248,20 @@ async function main() {
       break
     }
 
+    case 'set-key': {
+      const [instanceId, key, ...rest] = args
+      if (!key) fail('Usage: reef set-key <instance> <api-key> [--agent <agent>] [--provider <provider>] [--restart]')
+      const instance = await requireInstance(instanceId)
+      const agentIdx = rest.indexOf('--agent')
+      const agentId = agentIdx >= 0 ? rest[agentIdx + 1] : 'main'
+      const providerIdx = rest.indexOf('--provider')
+      const provider = providerIdx >= 0 ? rest[providerIdx + 1] : 'anthropic'
+      const restart = rest.includes('--restart')
+      const result = await setApiKey(sshConfig(instance), agentId, key, { provider, restart })
+      console.log(JSON.stringify(result))
+      break
+    }
+
     case 'logs': {
       const [instanceId, ...rest] = args
       if (!instanceId) fail('Usage: reef logs <instance> [--lines N] [--agent <agent>]')
@@ -285,6 +300,9 @@ async function main() {
         '  chat <instance> <agent> <message>      Send message, get JSON response',
         '  create-agent <instance> <name> [--model M]  Create new agent',
         '  delete-agent <instance> <agent>        Delete an agent',
+        '',
+        'Config commands:',
+        '  set-key <instance> <key> [--agent A] [--provider P] [--restart]  Set API key',
         '',
         'Channel commands:',
         '  add-channel <instance> <type> <token> [account]  Add a channel',
