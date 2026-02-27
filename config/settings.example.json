@@ -1,0 +1,10 @@
+{
+  "accounts": {
+    "personal": {
+      "tokenRef": "op://AI-Agents/Reef - Digital Ocean/credential",
+      "nameMap": {
+        "openclaw-example": "Example"
+      }
+    }
+  }
+}
