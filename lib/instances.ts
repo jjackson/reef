@@ -54,7 +54,7 @@ export async function listInstances(): Promise<Instance[]> {
         label: droplet.name,
         ip: droplet.ip,
         dropletId: droplet.id,
-        sshKeyRef: `op://AI-Agents/${opName} - SSH Private Key/notesPlain`,
+        sshKeyRef: `op://AI-Agents/${opName} - SSH Key/private key`,
       }
     })
     .filter((i): i is Instance => i !== null)

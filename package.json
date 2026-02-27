@@ -1,6 +1,6 @@
 {
   "name": "reef",
-  "version": "2.4.27",
+  "version": "2.4.28",
   "private": true,
   "bin": {
     "reef": "./bin/reef.ts"
