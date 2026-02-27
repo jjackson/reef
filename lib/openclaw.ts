@@ -640,6 +640,69 @@ export async function listPairingRequests(
   }
 }
 
+export interface SetKeyResult {
+  success: boolean
+  output: string
+}
+
+/**
+ * Sets the Anthropic API key for an agent on a remote instance.
+ * Writes directly to the agent's auth-profiles.json (the same format
+ * OpenClaw uses internally). Optionally restarts the gateway afterward.
+ */
+export async function setApiKey(
+  config: SshConfig,
+  agentId: string,
+  apiKey: string,
+  options?: { provider?: string; restart?: boolean }
+): Promise<SetKeyResult> {
+  if (!SAFE_NAME_RE.test(agentId)) {
+    return { success: false, output: `Invalid agent ID: ${agentId}` }
+  }
+
+  const provider = options?.provider || 'anthropic'
+  const profileKey = `${provider}:default`
+  const agentDir = `$HOME/.openclaw/agents/${agentId}/agent`
+
+  // Read existing auth-profiles.json (if any)
+  const existing = await runCommand(config, `cat ${agentDir}/auth-profiles.json 2>/dev/null || echo '{}'`)
+  let authProfiles: Record<string, unknown>
+  try {
+    authProfiles = JSON.parse(existing.stdout.trim())
+  } catch {
+    authProfiles = {}
+  }
+
+  // Merge in the new key
+  const profiles = (authProfiles.profiles || {}) as Record<string, unknown>
+  profiles[profileKey] = {
+    type: 'api_key',
+    provider,
+    key: apiKey,
+  }
+  authProfiles.version = 1
+  authProfiles.profiles = profiles
+
+  // Write back
+  const json = JSON.stringify(authProfiles, null, 2)
+  await runCommand(config, `mkdir -p ${agentDir}`)
+
+  // Use base64 to avoid any shell escaping issues with the key
+  const b64 = Buffer.from(json).toString('base64')
+  const writeResult = await runCommand(config, `echo '${b64}' | base64 -d > ${agentDir}/auth-profiles.json`)
+
+  if (writeResult.code !== 0) {
+    return { success: false, output: `Failed to write auth-profiles.json: ${writeResult.stderr}` }
+  }
+
+  // Optionally restart
+  if (options?.restart) {
+    await runCommand(config, 'systemctl --user restart openclaw-gateway 2>/dev/null || openclaw gateway restart 2>/dev/null || true')
+  }
+
+  return { success: true, output: `Set ${provider} API key for agent '${agentId}'` }
+}
+
 export interface DeployResult {
   success: boolean
   doctorOutput: string
