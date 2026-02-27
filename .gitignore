@@ -41,6 +41,9 @@ config/name-map.json
 backups/*
 !backups/.gitkeep
 
+# worktrees
+.worktrees/
+
 # vercel
 .vercel
 
