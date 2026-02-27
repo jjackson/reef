@@ -7,7 +7,7 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances on Digit
 ## Key architecture decisions
 
 - Droplets are discovered by name pattern (`openclaw` or `open-claw`), not DO tags
-- `config/name-map.json` maps droplet names to 1Password item name prefixes (gitignored, copy from `.example`)
+- `config/settings.json` maps DO account names to token refs and per-account droplet name maps (gitignored, copy from `.example`)
 - SSH keys are stored as 1Password **Secure Notes** — resolved via `notesPlain` field, NOT `private key`
 - Labels in the UI use the full droplet name (e.g. `dot-openclaw`), not shortened names
 - SSH key resolution priority: `SSH_PRIVATE_KEY` env → `SSH_KEY_PATH` file → 1Password op:// reference
@@ -18,7 +18,7 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances on Digit
 - `lib/` — core modules: `mapping.ts`, `digitalocean.ts`, `instances.ts`, `1password.ts`, `ssh.ts`, `openclaw.ts`
 - `app/` — Next.js App Router pages and components
 - `app/api/instances/` — 7 API routes (list, health, check, backup, agents, browse, chat)
-- `config/name-map.json` — gitignored, maps droplet names to 1Password names
+- `config/settings.json` — gitignored, maps DO accounts to token refs and droplet-to-1Password name maps
 - `.env.local` — gitignored, holds `DO_API_TOKEN` and `OP_SERVICE_ACCOUNT_TOKEN`
 
 ## Testing
@@ -37,9 +37,34 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances on Digit
 
 ## Gotchas
 
-- `.env.local` and `config/name-map.json` must exist in the working directory (not just the main repo if using worktrees)
+- `.env.local` and `config/settings.json` must exist in the working directory (not just the main repo if using worktrees)
 - The 1Password vault is named `AI-Agents`
 - 1Password items follow the pattern `<Name> - SSH Private Key` where Name is capitalized (e.g. "Dot", "Myri")
+
+## Multi-account configuration
+
+Reef supports multiple Digital Ocean accounts. Configure them in `config/settings.json`:
+
+```json
+{
+  "accounts": {
+    "personal": {
+      "tokenRef": "op://AI-Agents/Reef - Digital Ocean/credential",
+      "nameMap": { "openclaw-hal": "Hal" }
+    },
+    "work": {
+      "tokenRef": "op://Work/DO-Token/credential",
+      "nameMap": { "openclaw-alpha": "Alpha" }
+    }
+  }
+}
+```
+
+- `tokenRef` can be a 1Password `op://` reference or a raw DO API token
+- Each account has its own `nameMap` mapping droplet names to 1Password item prefixes
+- The sidebar groups instances by account when multiple accounts are configured
+- CLI commands work across all accounts by default; `create-machine` accepts `--account`
+- Legacy `DO_API_TOKEN` / `DO_API_TOKEN_OP_REF` env vars still work when no accounts are configured
 
 ## CLI
 
