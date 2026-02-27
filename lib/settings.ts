@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 export interface AccountConfig {
@@ -61,4 +61,13 @@ export function getGlobalNameMap(): Record<string, string> {
     Object.assign(merged, config.nameMap)
   }
   return merged
+}
+
+export function addToNameMap(accountId: string, dropletName: string, botName: string): void {
+  const settingsPath = join(process.cwd(), 'config', 'settings.json')
+  const settings = loadSettings()
+  if (!settings.accounts[accountId]) return
+  settings.accounts[accountId].nameMap[dropletName] = botName
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n')
+  cached = settings
 }
