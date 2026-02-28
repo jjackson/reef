@@ -8,6 +8,7 @@ import { InstanceDetail } from './components/InstanceDetail'
 import { ChatPanel } from './components/ChatPanel'
 import { FleetPanel } from './components/FleetPanel'
 import { BroadcastPanel } from './components/BroadcastPanel'
+import { HomePanel } from './components/HomePanel'
 
 export default function DashboardPage() {
   const { instances, setAccountInstances, viewMode, setViewMode, checkedAgents } = useDashboard()
@@ -53,6 +54,7 @@ export default function DashboardPage() {
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
       <main className="flex-1 overflow-hidden">
+        {viewMode === 'home' && <HomePanel />}
         {viewMode === 'instance' && <InstanceDetail />}
         {(viewMode === 'detail' || viewMode === 'file') && <AgentDetail />}
         {viewMode === 'chat' && <ChatPanel />}
