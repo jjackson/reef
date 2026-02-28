@@ -89,10 +89,6 @@ interface DashboardState {
   broadcastAgents: BroadcastAgent[]
   startBroadcast: (message: string) => void
 
-  // Terminal sessions (tmux)
-  terminalSessions: Map<string, string> // instanceId → tmux session name
-  setTerminalSession: (instanceId: string, sessionName: string) => void
-  clearTerminalSession: (instanceId: string) => void
 }
 
 const DashboardContext = createContext<DashboardState | null>(null)
@@ -113,7 +109,6 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null)
   const [broadcastAgents, setBroadcastAgents] = useState<BroadcastAgent[]>([])
   const [dirCache] = useState<Map<string, FileEntry[]>>(new Map())
-  const [terminalSessions, setTerminalSessions] = useState<Map<string, string>>(new Map())
 
   // Derive flat instances list from accounts for backward compat
   const instances = useMemo(() => accounts.flatMap(a => a.instances), [accounts])
@@ -126,21 +121,6 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     return dirCache.get(`${instanceId}:${path}`)
   }, [dirCache])
 
-  const setTerminalSession = useCallback((instanceId: string, sessionName: string) => {
-    setTerminalSessions(prev => {
-      const next = new Map(prev)
-      next.set(instanceId, sessionName)
-      return next
-    })
-  }, [])
-
-  const clearTerminalSession = useCallback((instanceId: string) => {
-    setTerminalSessions(prev => {
-      const next = new Map(prev)
-      next.delete(instanceId)
-      return next
-    })
-  }, [])
 
   // Backward-compat: setInstances groups by accountId into accounts
   const setInstances = useCallback((newInstances: InstanceWithAgents[]) => {
@@ -277,7 +257,6 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       dirCache, setDirCache, getDirCache,
       checkedAgents, toggleAgentCheck, toggleInstanceCheck, toggleAll, clearChecks,
       broadcastMessage, broadcastAgents, startBroadcast,
-      terminalSessions, setTerminalSession, clearTerminalSession,
     }}>
       {children}
     </DashboardContext.Provider>

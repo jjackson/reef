@@ -30,8 +30,8 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances on Digit
 ## Dev server
 
 - **Always restart after any code change** — Turbopack does NOT detect file changes on WSL (`/mnt/c/` has no inotify)
-- Use `bash bin/dev.sh` to restart — it kills the old server, clears `.next/` cache, bumps patch version, and starts fresh
-- **Do NOT background `dev.sh`** (no `&` or `run_in_background`) — the script uses `exec` to replace itself with the node process, which breaks when backgrounded with output redirection. Run it in a foreground shell or a dedicated background task without redirection.
+- Use `bash bin/dev_win.sh` on Windows native, `bash bin/dev_wsl.sh` on WSL — both kill the old server, clear `.next/` cache, bump patch version, and start fresh
+- **Do NOT background the dev script** (no `&` or `run_in_background`) — the script uses `exec` to replace itself with the node process, which breaks when backgrounded with output redirection. Run it in a foreground shell or a dedicated background task without redirection.
 - Never assume hot reload works. Every change requires a restart.
 - `next.config.ts` has `serverExternalPackages: ['ssh2', '@1password/sdk']` for native module compat
 

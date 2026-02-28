@@ -5,7 +5,7 @@ import { useDashboard } from './context/DashboardContext'
 import { TerminalPanel } from './Terminal'
 
 export function InstanceDetail() {
-  const { instances, activeInstanceId, updateInstanceAgents, terminalSessions, setTerminalSession, clearTerminalSession } = useDashboard()
+  const { instances, activeInstanceId, updateInstanceAgents } = useDashboard()
   const [restartMsg, setRestartMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [restartLoading, setRestartLoading] = useState(false)
@@ -14,7 +14,7 @@ export function InstanceDetail() {
   const [installLoading, setInstallLoading] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)
   const [terminalCommand, setTerminalCommand] = useState<string | undefined>()
-  const [killSessionsLoading, setKillSessionsLoading] = useState(false)
+  const [terminalKey, setTerminalKey] = useState(0)
   const [version, setVersion] = useState<string | null>(null)
 
   const instance = instances.find(i => i.id === activeInstanceId)
@@ -37,35 +37,6 @@ export function InstanceDetail() {
       .catch(() => {})
   }, [instance?.id, updateInstanceAgents])
 
-  // Auto-restore terminal if there's an active tmux session for this instance
-  useEffect(() => {
-    if (!instance) return
-    const existingSession = terminalSessions.get(instance.id)
-    if (existingSession) {
-      setShowTerminal(true)
-      setTerminalCommand(undefined)
-      return
-    }
-
-    const controller = new AbortController()
-    const instanceId = instance.id
-    // Check remote for sessions we don't know about (e.g. after Reef restart)
-    fetch(`/api/instances/${instanceId}/terminal/sessions`, { signal: controller.signal })
-      .then(res => res.ok ? res.json() : { sessions: [] })
-      .then(data => {
-        if (data.sessions.length > 0) {
-          const latest = data.sessions[data.sessions.length - 1]
-          setTerminalSession(instanceId, latest.name)
-          setShowTerminal(true)
-          setTerminalCommand(undefined)
-        }
-      })
-      .catch(() => {})
-
-    return () => controller.abort()
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only re-run on instance change
-  }, [instance?.id])
-
   if (!instance) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -78,8 +49,8 @@ export function InstanceDetail() {
   }
 
   function openTerminal(command?: string) {
-    if (instance) clearTerminalSession(instance.id)
     setTerminalCommand(command)
+    setTerminalKey(k => k + 1)
     setShowTerminal(true)
   }
 
@@ -127,23 +98,6 @@ export function InstanceDetail() {
       setRestartMsg({ text: e instanceof Error ? e.message : 'Unknown error', ok: false })
     } finally {
       setGoogleSetupLoading(false)
-    }
-  }
-
-  async function handleKillSessions() {
-    if (!instance) return
-    setKillSessionsLoading(true)
-    try {
-      const res = await fetch(`/api/instances/${instance.id}/terminal/kill-sessions`, { method: 'POST' })
-      const data = await res.json()
-      if (!data.success) throw new Error(data.error || 'Failed to kill sessions')
-      clearTerminalSession(instance.id)
-      setShowTerminal(false)
-      setRestartMsg({ text: `Killed ${data.killed} tmux session${data.killed !== 1 ? 's' : ''}`, ok: true })
-    } catch (e) {
-      setRestartMsg({ text: e instanceof Error ? e.message : 'Unknown error', ok: false })
-    } finally {
-      setKillSessionsLoading(false)
     }
   }
 
@@ -264,24 +218,15 @@ export function InstanceDetail() {
             <span className="opacity-60 font-mono">&gt;_</span>
             Terminal
           </button>
-          <button
-            onClick={handleKillSessions}
-            disabled={killSessionsLoading}
-            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-red-200 bg-white text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-300 disabled:opacity-40 transition-colors font-medium"
-          >
-            <span className="opacity-60">{'\u{1F5D1}'}</span>
-            {killSessionsLoading ? 'Killing...' : 'Kill Sessions'}
-          </button>
         </div>
       </div>
 
       {/* Content area */}
       {showTerminal ? (
         <TerminalPanel
+          key={terminalKey}
           instanceId={instance.id}
-          sessionName={terminalSessions.get(instance.id)}
           initialCommand={terminalCommand}
-          onSessionCreated={(name) => setTerminalSession(instance.id, name)}
           onClose={() => {
             setShowTerminal(false)
             fetch(`/api/instances/${instance.id}/agents`)

@@ -5,20 +5,15 @@ import { useEffect, useRef, useState } from 'react'
 interface TerminalProps {
   instanceId: string
   onClose: () => void
-  onSessionCreated?: (sessionName: string) => void
-  sessionName?: string
   initialCommand?: string
 }
 
-export function TerminalPanel({ instanceId, onClose, onSessionCreated, sessionName, initialCommand }: TerminalProps) {
+export function TerminalPanel({ instanceId, onClose, initialCommand }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const xtermRef = useRef<any>(null)
   const fitRef = useRef<any>(null)
-  const onSessionCreatedRef = useRef(onSessionCreated)
-  onSessionCreatedRef.current = onSessionCreated
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
-  const [currentSession, setCurrentSession] = useState<string | null>(sessionName || null)
 
   useEffect(() => {
     let xterm: any
@@ -53,13 +48,10 @@ export function TerminalPanel({ instanceId, onClose, onSessionCreated, sessionNa
       xterm.open(containerRef.current)
       fitAddon.fit()
 
-      // Build WebSocket URL with tmux params
+      // Build WebSocket URL
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const wsUrl = new URL(`${protocol}//${window.location.host}/api/instances/${instanceId}/terminal`)
-      if (sessionName) {
-        wsUrl.searchParams.set('session', sessionName)
-      }
-      if (initialCommand && !sessionName) {
+      if (initialCommand) {
         wsUrl.searchParams.set('command', initialCommand)
       }
 
@@ -77,9 +69,6 @@ export function TerminalPanel({ instanceId, onClose, onSessionCreated, sessionNa
           const msg = JSON.parse(e.data)
           if (msg.type === 'data') {
             xterm.write(msg.data)
-          } else if (msg.type === 'session') {
-            setCurrentSession(msg.name)
-            onSessionCreatedRef.current?.(msg.name)
           } else if (msg.type === 'error') {
             xterm.write(`\r\n\x1b[31mError: ${msg.data}\x1b[0m\r\n`)
           }
@@ -91,13 +80,23 @@ export function TerminalPanel({ instanceId, onClose, onSessionCreated, sessionNa
       ws.onclose = () => {
         if (disposed) return
         setStatus('disconnected')
-        xterm.write('\r\n\x1b[90m--- Disconnected (session still running on remote) ---\x1b[0m\r\n')
+        xterm.write('\r\n\x1b[90m--- Disconnected ---\x1b[0m\r\n')
       }
 
       ws.onerror = () => {
         if (disposed) return
         setStatus('disconnected')
       }
+
+      // Ctrl+C copies selection instead of sending SIGINT when text is selected
+      xterm.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+        if (e.type === 'keydown' && e.ctrlKey && e.key === 'c' && xterm.hasSelection()) {
+          navigator.clipboard.writeText(xterm.getSelection())
+          xterm.clearSelection()
+          return false // prevent sending to terminal
+        }
+        return true
+      })
 
       xterm.onData((data: string) => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -124,7 +123,7 @@ export function TerminalPanel({ instanceId, onClose, onSessionCreated, sessionNa
       wsRef.current?.close()
       xtermRef.current?.dispose()
     }
-  }, [instanceId, sessionName, initialCommand])
+  }, [instanceId, initialCommand])
 
   return (
     <div className="bg-slate-800 flex flex-col flex-1 min-h-0">
@@ -137,14 +136,11 @@ export function TerminalPanel({ instanceId, onClose, onSessionCreated, sessionNa
             'bg-red-400'
           }`} />
           <span className="text-[10px] text-slate-400">{status}</span>
-          {currentSession && (
-            <span className="text-[10px] text-slate-500 font-mono">{currentSession}</span>
-          )}
         </div>
         <button
           onClick={onClose}
           className="text-slate-400 hover:text-slate-200 text-xs px-1.5 py-0.5 rounded hover:bg-slate-600 transition-colors"
-          title="Close terminal (session keeps running)"
+          title="Close terminal"
         >
           &#x2715;
         </button>

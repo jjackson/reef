@@ -20,7 +20,6 @@ export function UPGRADE(
     return
   }
 
-  const existingSession = url.searchParams.get('session')
   const initialCommand = url.searchParams.get('command')
 
   let sshConn: Client | null = null
@@ -36,52 +35,22 @@ export function UPGRADE(
     sshConn = new Client()
 
     sshConn.on('ready', () => {
-      const cols = 80
-      const rows = 24
-
-      if (existingSession) {
-        // Reattach to existing tmux session
-        sshConn!.shell(
-          { cols, rows, term: 'xterm-256color' },
-          (err, stream) => {
-            if (err) {
-              client.send(JSON.stringify({ type: 'error', data: err.message }))
-              client.close(1011, 'SSH shell error')
-              return
-            }
-            sshStream = stream
-            wireStream(client, stream, sshConn!)
-
-            stream.write(`tmux attach -t ${existingSession}\n`)
-            client.send(JSON.stringify({ type: 'session', name: existingSession }))
+      sshConn!.shell(
+        { cols: 80, rows: 24, term: 'xterm-256color' },
+        (err, stream) => {
+          if (err) {
+            client.send(JSON.stringify({ type: 'error', data: err.message }))
+            client.close(1011, 'SSH shell error')
+            return
           }
-        )
-      } else {
-        // Create new tmux session
-        const sessionName = `reef-${Date.now()}`
+          sshStream = stream
+          wireStream(client, stream, sshConn!)
 
-        sshConn!.shell(
-          { cols, rows, term: 'xterm-256color' },
-          (err, stream) => {
-            if (err) {
-              client.send(JSON.stringify({ type: 'error', data: err.message }))
-              client.close(1011, 'SSH shell error')
-              return
-            }
-            sshStream = stream
-            wireStream(client, stream, sshConn!)
-
-            const createCmd = `tmux new-session -d -s ${sessionName} -x ${cols} -y ${rows}`
-            if (initialCommand) {
-              const escaped = initialCommand.replace(/'/g, "'\\''")
-              stream.write(`${createCmd} && tmux send-keys -t ${sessionName} '${escaped}' Enter && tmux attach -t ${sessionName}\n`)
-            } else {
-              stream.write(`${createCmd} && tmux attach -t ${sessionName}\n`)
-            }
-            client.send(JSON.stringify({ type: 'session', name: sessionName }))
+          if (initialCommand) {
+            stream.write(`${initialCommand}\n`)
           }
-        )
-      }
+        }
+      )
     })
 
     sshConn.on('error', (err) => {
