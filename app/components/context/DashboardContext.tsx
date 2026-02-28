@@ -27,7 +27,7 @@ export interface AccountWithInstances {
   collapsed: boolean
 }
 
-export type ViewMode = 'detail' | 'chat' | 'file' | 'fleet' | 'broadcast' | 'instance'
+export type ViewMode = 'home' | 'detail' | 'chat' | 'file' | 'fleet' | 'broadcast' | 'instance'
 
 export interface BroadcastAgent {
   instanceId: string
@@ -61,6 +61,7 @@ interface DashboardState {
   activeAgentId: string | null
   setActiveAgent: (instanceId: string, agentId: string) => void
   setActiveInstance: (instanceId: string) => void
+  goHome: () => void
   clearActive: () => void
 
   // View mode
@@ -87,6 +88,11 @@ interface DashboardState {
   broadcastMessage: string | null
   broadcastAgents: BroadcastAgent[]
   startBroadcast: (message: string) => void
+
+  // Terminal sessions (tmux)
+  terminalSessions: Map<string, string> // instanceId → tmux session name
+  setTerminalSession: (instanceId: string, sessionName: string) => void
+  clearTerminalSession: (instanceId: string) => void
 }
 
 const DashboardContext = createContext<DashboardState | null>(null)
@@ -101,12 +107,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<AccountWithInstances[]>([])
   const [activeInstanceId, setActiveInstanceId] = useState<string | null>(null)
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>('detail')
+  const [viewMode, setViewMode] = useState<ViewMode>('home')
   const [activeFile, setActiveFile] = useState<FileViewState | null>(null)
   const [checkedAgents, setCheckedAgents] = useState<Set<string>>(new Set())
   const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null)
   const [broadcastAgents, setBroadcastAgents] = useState<BroadcastAgent[]>([])
   const [dirCache] = useState<Map<string, FileEntry[]>>(new Map())
+  const [terminalSessions, setTerminalSessions] = useState<Map<string, string>>(new Map())
 
   // Derive flat instances list from accounts for backward compat
   const instances = useMemo(() => accounts.flatMap(a => a.instances), [accounts])
@@ -118,6 +125,22 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const getDirCache = useCallback((instanceId: string, path: string) => {
     return dirCache.get(`${instanceId}:${path}`)
   }, [dirCache])
+
+  const setTerminalSession = useCallback((instanceId: string, sessionName: string) => {
+    setTerminalSessions(prev => {
+      const next = new Map(prev)
+      next.set(instanceId, sessionName)
+      return next
+    })
+  }, [])
+
+  const clearTerminalSession = useCallback((instanceId: string) => {
+    setTerminalSessions(prev => {
+      const next = new Map(prev)
+      next.delete(instanceId)
+      return next
+    })
+  }, [])
 
   // Backward-compat: setInstances groups by accountId into accounts
   const setInstances = useCallback((newInstances: InstanceWithAgents[]) => {
@@ -173,6 +196,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     setActiveInstanceId(instanceId)
     setActiveAgentId(null)
     setViewMode('instance')
+    setActiveFile(null)
+  }, [])
+
+  const goHome = useCallback(() => {
+    setActiveInstanceId(null)
+    setActiveAgentId(null)
+    setViewMode('home')
     setActiveFile(null)
   }, [])
 
@@ -241,12 +271,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   return (
     <DashboardContext.Provider value={{
       instances, accounts, setInstances, setAccountInstances, toggleAccountCollapse, updateInstanceAgents,
-      activeInstanceId, activeAgentId, setActiveAgent, setActiveInstance, clearActive,
+      activeInstanceId, activeAgentId, setActiveAgent, setActiveInstance, goHome, clearActive,
       viewMode, setViewMode,
       activeFile, setActiveFile,
       dirCache, setDirCache, getDirCache,
       checkedAgents, toggleAgentCheck, toggleInstanceCheck, toggleAll, clearChecks,
       broadcastMessage, broadcastAgents, startBroadcast,
+      terminalSessions, setTerminalSession, clearTerminalSession,
     }}>
       {children}
     </DashboardContext.Provider>

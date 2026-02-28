@@ -5,15 +5,18 @@ import { useEffect, useRef, useState } from 'react'
 interface TerminalProps {
   instanceId: string
   onClose: () => void
+  onSessionCreated?: (sessionName: string) => void
+  sessionName?: string
   initialCommand?: string
 }
 
-export function TerminalPanel({ instanceId, onClose, initialCommand }: TerminalProps) {
+export function TerminalPanel({ instanceId, onClose, onSessionCreated, sessionName, initialCommand }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const xtermRef = useRef<any>(null)
   const fitRef = useRef<any>(null)
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
+  const [currentSession, setCurrentSession] = useState<string | null>(sessionName || null)
 
   useEffect(() => {
     let xterm: any
@@ -23,7 +26,6 @@ export function TerminalPanel({ instanceId, onClose, initialCommand }: TerminalP
     let observer: ResizeObserver | null = null
 
     async function init() {
-      // Dynamic import to avoid SSR issues
       const { Terminal } = await import('@xterm/xterm')
       const { FitAddon } = await import('@xterm/addon-fit')
       await import('@xterm/xterm/css/xterm.css')
@@ -49,17 +51,22 @@ export function TerminalPanel({ instanceId, onClose, initialCommand }: TerminalP
       xterm.open(containerRef.current)
       fitAddon.fit()
 
-      // Connect WebSocket
+      // Build WebSocket URL with tmux params
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      ws = new WebSocket(`${protocol}//${window.location.host}/api/instances/${instanceId}/terminal`)
-      wsRef.current = ws
+      const wsUrl = new URL(`${protocol}//${window.location.host}/api/instances/${instanceId}/terminal`)
+      if (sessionName) {
+        wsUrl.searchParams.set('session', sessionName)
+      }
+      if (initialCommand && !sessionName) {
+        wsUrl.searchParams.set('command', initialCommand)
+      }
 
-      let commandSent = false
+      ws = new WebSocket(wsUrl.toString())
+      wsRef.current = ws
 
       ws.onopen = () => {
         if (disposed) return
         setStatus('connected')
-        // Send initial resize
         ws.send(JSON.stringify({ type: 'resize', cols: xterm.cols, rows: xterm.rows }))
       }
 
@@ -68,13 +75,9 @@ export function TerminalPanel({ instanceId, onClose, initialCommand }: TerminalP
           const msg = JSON.parse(e.data)
           if (msg.type === 'data') {
             xterm.write(msg.data)
-            // Send initial command once we see shell output (prompt is ready)
-            if (initialCommand && !commandSent) {
-              commandSent = true
-              setTimeout(() => {
-                ws.send(JSON.stringify({ type: 'data', data: initialCommand + '\n' }))
-              }, 100)
-            }
+          } else if (msg.type === 'session') {
+            setCurrentSession(msg.name)
+            onSessionCreated?.(msg.name)
           } else if (msg.type === 'error') {
             xterm.write(`\r\n\x1b[31mError: ${msg.data}\x1b[0m\r\n`)
           }
@@ -86,7 +89,7 @@ export function TerminalPanel({ instanceId, onClose, initialCommand }: TerminalP
       ws.onclose = () => {
         if (disposed) return
         setStatus('disconnected')
-        xterm.write('\r\n\x1b[90m--- Session ended ---\x1b[0m\r\n')
+        xterm.write('\r\n\x1b[90m--- Disconnected (session still running on remote) ---\x1b[0m\r\n')
       }
 
       ws.onerror = () => {
@@ -94,14 +97,12 @@ export function TerminalPanel({ instanceId, onClose, initialCommand }: TerminalP
         setStatus('disconnected')
       }
 
-      // Keystrokes → WebSocket
       xterm.onData((data: string) => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'data', data }))
         }
       })
 
-      // Resize handling
       observer = new ResizeObserver(() => {
         if (fitAddon && xterm.element) {
           fitAddon.fit()
@@ -121,11 +122,10 @@ export function TerminalPanel({ instanceId, onClose, initialCommand }: TerminalP
       wsRef.current?.close()
       xtermRef.current?.dispose()
     }
-  }, [instanceId, initialCommand])
+  }, [instanceId, sessionName, initialCommand, onSessionCreated])
 
   return (
     <div className="bg-slate-800 flex flex-col flex-1 min-h-0">
-      {/* Terminal header */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-slate-700 border-b border-slate-600 shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-xs font-mono text-slate-300">Terminal</span>
@@ -135,16 +135,18 @@ export function TerminalPanel({ instanceId, onClose, initialCommand }: TerminalP
             'bg-red-400'
           }`} />
           <span className="text-[10px] text-slate-400">{status}</span>
+          {currentSession && (
+            <span className="text-[10px] text-slate-500 font-mono">{currentSession}</span>
+          )}
         </div>
         <button
           onClick={onClose}
           className="text-slate-400 hover:text-slate-200 text-xs px-1.5 py-0.5 rounded hover:bg-slate-600 transition-colors"
-          title="Close terminal"
+          title="Close terminal (session keeps running)"
         >
           &#x2715;
         </button>
       </div>
-      {/* Terminal content */}
       <div ref={containerRef} className="flex-1 min-h-0" />
     </div>
   )

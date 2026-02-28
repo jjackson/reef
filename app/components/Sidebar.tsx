@@ -161,17 +161,17 @@ function AccountGroup({ account }: { account: AccountWithInstances }) {
 }
 
 export function Sidebar() {
-  const { accounts, instances, checkedAgents, toggleAll } = useDashboard()
+  const { accounts, instances, checkedAgents, toggleAll, goHome } = useDashboard()
   const [treeCollapsed, setTreeCollapsed] = useState(false)
   const allAgents = instances.flatMap(i => i.agents.map(a => `${i.id}:${a.id}`))
   const allChecked = allAgents.length > 0 && allAgents.every(k => checkedAgents.has(k))
 
   return (
     <aside className="w-64 border-r border-gray-200 bg-white flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-gray-200">
+      <button onClick={goHome} className="w-full text-left px-4 py-3 border-b border-gray-200 hover:bg-gray-50 transition-colors">
         <h1 className="text-lg font-bold text-gray-900">reef</h1>
         <p className="text-xs text-gray-500">OpenClaw management</p>
-      </div>
+      </button>
       <div className="px-2 py-1 border-b border-gray-100 flex items-center justify-between">
         <label className="flex items-center gap-2 text-xs text-gray-500 px-2 py-1 cursor-pointer">
           <input
