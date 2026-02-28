@@ -15,6 +15,8 @@ export function TerminalPanel({ instanceId, onClose, onSessionCreated, sessionNa
   const wsRef = useRef<WebSocket | null>(null)
   const xtermRef = useRef<any>(null)
   const fitRef = useRef<any>(null)
+  const onSessionCreatedRef = useRef(onSessionCreated)
+  onSessionCreatedRef.current = onSessionCreated
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [currentSession, setCurrentSession] = useState<string | null>(sessionName || null)
 
@@ -77,7 +79,7 @@ export function TerminalPanel({ instanceId, onClose, onSessionCreated, sessionNa
             xterm.write(msg.data)
           } else if (msg.type === 'session') {
             setCurrentSession(msg.name)
-            onSessionCreated?.(msg.name)
+            onSessionCreatedRef.current?.(msg.name)
           } else if (msg.type === 'error') {
             xterm.write(`\r\n\x1b[31mError: ${msg.data}\x1b[0m\r\n`)
           }
@@ -122,7 +124,7 @@ export function TerminalPanel({ instanceId, onClose, onSessionCreated, sessionNa
       wsRef.current?.close()
       xtermRef.current?.dispose()
     }
-  }, [instanceId, sessionName, initialCommand, onSessionCreated])
+  }, [instanceId, sessionName, initialCommand])
 
   return (
     <div className="bg-slate-800 flex flex-col flex-1 min-h-0">

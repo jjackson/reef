@@ -47,18 +47,23 @@ export function InstanceDetail() {
       return
     }
 
+    const controller = new AbortController()
+    const instanceId = instance.id
     // Check remote for sessions we don't know about (e.g. after Reef restart)
-    fetch(`/api/instances/${instance.id}/terminal/sessions`)
+    fetch(`/api/instances/${instanceId}/terminal/sessions`, { signal: controller.signal })
       .then(res => res.ok ? res.json() : { sessions: [] })
       .then(data => {
         if (data.sessions.length > 0) {
           const latest = data.sessions[data.sessions.length - 1]
-          setTerminalSession(instance.id, latest.name)
+          setTerminalSession(instanceId, latest.name)
           setShowTerminal(true)
           setTerminalCommand(undefined)
         }
       })
       .catch(() => {})
+
+    return () => controller.abort()
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only re-run on instance change
   }, [instance?.id])
 
   if (!instance) {

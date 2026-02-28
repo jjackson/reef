@@ -17,7 +17,7 @@ export async function GET(
     const sessions = result.stdout
       .split('\n')
       .map(s => s.trim())
-      .filter(s => s.startsWith('reef-'))
+      .filter(s => /^reef-\d+$/.test(s))
       .map(name => ({ name }))
 
     return NextResponse.json({ sessions })

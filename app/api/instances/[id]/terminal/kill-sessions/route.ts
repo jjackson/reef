@@ -18,7 +18,7 @@ export async function POST(
     const reefSessions = listResult.stdout
       .split('\n')
       .map(s => s.trim())
-      .filter(s => s.startsWith('reef-'))
+      .filter(s => /^reef-\d+$/.test(s))
 
     for (const session of reefSessions) {
       await runCommand(config, `tmux kill-session -t ${session}`)
