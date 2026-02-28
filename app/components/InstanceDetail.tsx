@@ -272,6 +272,7 @@ function AddChannelDialog({ instanceId, onClose, onAdded }: {
   const [channel, setChannel] = useState('telegram')
   const [token, setToken] = useState('')
   const [accountId, setAccountId] = useState('')
+  const [saveToOp, setSaveToOp] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [existing, setExisting] = useState<Record<string, string[]>>({})
@@ -298,7 +299,7 @@ function AddChannelDialog({ instanceId, onClose, onAdded }: {
       const res = await fetch(`/api/instances/${instanceId}/channels/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel, token, accountId }),
+        body: JSON.stringify({ channel, token, accountId, saveToOp }),
       })
       const data = await res.json()
       if (!data.success) throw new Error(data.output || data.error || 'Failed to add channel')
@@ -358,6 +359,15 @@ function AddChannelDialog({ instanceId, onClose, onAdded }: {
               className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent"
             />
           </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={saveToOp}
+              onChange={e => setSaveToOp(e.target.checked)}
+              className="rounded border-slate-300 text-slate-800 focus:ring-slate-400"
+            />
+            <span className="text-xs text-slate-600">Save token to 1Password</span>
+          </label>
           {error && (
             <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 border border-red-200">{error}</div>
           )}

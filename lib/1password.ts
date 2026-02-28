@@ -46,6 +46,37 @@ export async function listSshKeyItems(): Promise<{ id: string; title: string }[]
     .map(i => ({ id: i.id, title: i.title }))
 }
 
+export async function saveChannelToken(
+  channelType: string,
+  accountId: string,
+  token: string
+): Promise<{ id: string; title: string }> {
+  const client = await getClient()
+  const vaultId = await getVaultId()
+  const title = `${accountId} - ${channelType} Bot Token`
+
+  // Delete existing items with the same title to avoid duplicates
+  const existing = await client.items.list(vaultId)
+  for (const item of existing) {
+    if (item.title === title) {
+      await client.items.delete(vaultId, item.id)
+    }
+  }
+
+  const item = await client.items.create({
+    category: ItemCategory.ApiCredentials,
+    vaultId,
+    title,
+    fields: [{
+      id: 'credential',
+      title: 'credential',
+      value: token,
+      fieldType: ItemFieldType.Concealed,
+    }],
+  })
+  return { id: item.id, title: item.title }
+}
+
 export async function createSshKeyItem(name: string, privateKey: string): Promise<{ id: string; title: string }> {
   const client = await getClient()
   const vaultId = await getVaultId()
