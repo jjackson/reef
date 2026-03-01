@@ -8,6 +8,7 @@ import {
   runDoctor,
   restartOpenClaw,
   backupAgent,
+  extractInstance,
   deployAgent,
   sendChatMessage,
   getAgentHealth,
@@ -106,6 +107,16 @@ async function main() {
       const tarPath = join(backupDir, `${instanceId}-${agentId}-${timestamp}.tar.gz`)
       await backupAgent(sshConfig(instance), agentId, tarPath)
       console.log(JSON.stringify({ success: true, path: tarPath }))
+      break
+    }
+
+    case 'extract': {
+      const instanceId = args[0]
+      if (!instanceId) fail('Usage: reef extract <instance>')
+      const instance = await requireInstance(instanceId)
+      const backupDir = resolve('backups')
+      const result = await extractInstance(sshConfig(instance), instanceId, backupDir)
+      console.log(JSON.stringify(result))
       break
     }
 
@@ -341,7 +352,8 @@ async function main() {
         '  pairing-requests <instance> <channel>  List pending pairing requests',
         '',
         'Backup & deploy:',
-        '  backup <instance> <agent>              Download agent tarball',
+        '  extract <instance>                     Extract all agents + config for rebuild',
+        '  backup <instance> <agent>              Download single agent tarball',
         '  check-backup <tarball>                 Verify tarball integrity',
         '  deploy <instance> <agent> <tarball>    Deploy agent from tarball',
         '',

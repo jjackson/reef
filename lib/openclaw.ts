@@ -475,6 +475,7 @@ export interface AddChannelResult {
 
 /**
  * Adds a channel via `openclaw channels add`.
+ * Automatically enables the channel plugin if it isn't already.
  */
 export async function addChannel(
   config: SshConfig,
@@ -488,6 +489,10 @@ export async function addChannel(
   if (accountId && !SAFE_NAME_RE.test(accountId)) {
     return { success: false, output: `Invalid account ID: ${accountId}` }
   }
+
+  // Enable the channel plugin if not already enabled
+  await runCommand(config, `openclaw plugins enable ${channel} 2>&1`)
+
   const escapedToken = token.replace(/'/g, "'\\''")
   let cmd = `openclaw channels add --channel ${channel} --token '${escapedToken}'`
   if (accountId) cmd += ` --account ${accountId}`
@@ -744,13 +749,103 @@ export async function deployAgent(
 }
 
 /**
+ * Extracts all agents and channel bindings from an instance into a local directory.
+ * Used before destroying a machine to preserve everything needed for rebuild.
+ *
+ * Output structure:
+ *   {extractDir}/
+ *     manifest.json       — metadata, agent list, timestamps
+ *     agents/
+ *       {agentId}.tar.gz  — each agent's directory tarball
+ *     config/
+ *       channels.json     — output of `openclaw channels list --json`
+ *       bindings.json     — output of `openclaw config get bindings --json`
+ */
+export interface ExtractResult {
+  success: boolean
+  extractDir: string
+  agents: string[]
+  channelCount: number
+  bindingCount: number
+  errors: string[]
+}
+
+export async function extractInstance(
+  config: SshConfig,
+  instanceId: string,
+  baseDir: string
+): Promise<ExtractResult> {
+  const { mkdirSync, writeFileSync } = await import('fs')
+  const { join } = await import('path')
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const extractDir = join(baseDir, `${instanceId}-extract-${timestamp}`)
+  const agentsDir = join(extractDir, 'agents')
+  const configDir = join(extractDir, 'config')
+  mkdirSync(agentsDir, { recursive: true })
+  mkdirSync(configDir, { recursive: true })
+
+  const errors: string[] = []
+  const backedUpAgents: string[] = []
+
+  // 1. List and backup all agents
+  const agents = await listAgents(config)
+  for (const agent of agents) {
+    const tarPath = join(agentsDir, `${agent.id}.tar.gz`)
+    try {
+      await backupAgent(config, agent.id, tarPath)
+      backedUpAgents.push(agent.id)
+    } catch (err) {
+      errors.push(`Failed to backup agent ${agent.id}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  // 2. Save channel configuration
+  let channelCount = 0
+  try {
+    const channels = await listChannels(config)
+    writeFileSync(join(configDir, 'channels.json'), JSON.stringify(channels, null, 2))
+    channelCount = Object.values(channels.chat).reduce((n, arr) => n + arr.length, 0)
+  } catch (err) {
+    errors.push(`Failed to get channels: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  // 3. Save channel-agent bindings
+  let bindingCount = 0
+  try {
+    const result = await runCommand(config, 'openclaw config get bindings --json 2>/dev/null || echo "[]"')
+    const bindings = JSON.parse(result.stdout.trim())
+    writeFileSync(join(configDir, 'bindings.json'), JSON.stringify(bindings, null, 2))
+    bindingCount = Array.isArray(bindings) ? bindings.length : 0
+  } catch (err) {
+    errors.push(`Failed to get bindings: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  // 4. Write manifest
+  const manifest = {
+    instanceId,
+    extractedAt: new Date().toISOString(),
+    agents: agents.map(a => ({ id: a.id, identity: a.identityName, model: a.model })),
+    agentsBackedUp: backedUpAgents,
+    channelCount,
+    bindingCount,
+    errors,
+  }
+  writeFileSync(join(extractDir, 'manifest.json'), JSON.stringify(manifest, null, 2))
+
+  return {
+    success: errors.length === 0,
+    extractDir,
+    agents: backedUpAgents,
+    channelCount,
+    bindingCount,
+    errors,
+  }
+}
+
+/**
  * Migrates an agent from one machine to another.
- *
- * Strategy:
- * 1. Try `openclaw agent export <agentId>` on source (if CLI supports it)
- * 2. Fallback: tar the agent directory, SFTP via reef server, untar on destination
- *
- * TODO: Update with findings from Task 9 web research
+ * Uses tar+SFTP (openclaw has no native export/import commands).
  */
 export async function migrateAgent(
   sourceConfig: SshConfig,
