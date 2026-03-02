@@ -11,17 +11,19 @@ import { BroadcastPanel } from './components/BroadcastPanel'
 import { HomePanel } from './components/HomePanel'
 
 export default function DashboardPage() {
-  const { instances, setAccountInstances, viewMode, setViewMode, checkedAgents } = useDashboard()
+  const { instances, setAccountInstances, setWorkspacesFromData, viewMode, setViewMode, checkedAgents } = useDashboard()
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [accountsRes, instancesRes] = await Promise.all([
+        const [accountsRes, instancesRes, workspacesRes] = await Promise.all([
           fetch('/api/accounts'),
           fetch('/api/instances'),
+          fetch('/api/workspaces'),
         ])
         const accountsData = accountsRes.ok ? await accountsRes.json() : { accounts: [] }
         const instancesData = instancesRes.ok ? await instancesRes.json() : []
+        const workspacesData = workspacesRes.ok ? await workspacesRes.json() : { workspaces: [] }
 
         // Group instances by accountId
         const grouped = new Map<string, InstanceWithAgents[]>()
@@ -41,10 +43,15 @@ export default function DashboardPage() {
         if (defaultInstances?.length) {
           setAccountInstances('default', 'Default', defaultInstances)
         }
+
+        // Set workspaces data
+        if (workspacesData.workspaces?.length) {
+          setWorkspacesFromData(workspacesData.workspaces)
+        }
       } catch {}
     }
     loadData()
-  }, [setAccountInstances])
+  }, [setAccountInstances, setWorkspacesFromData])
 
   useEffect(() => {
     if (checkedAgents.size >= 2 && viewMode !== 'broadcast') setViewMode('fleet')

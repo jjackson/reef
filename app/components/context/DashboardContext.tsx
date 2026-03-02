@@ -16,8 +16,17 @@ export interface InstanceWithAgents {
   id: string
   label: string
   ip: string
+  providerId: string
+  provider: string
+  platform: string
   accountId: string
   agents: AgentInfo[]
+}
+
+export interface WorkspaceWithInstances {
+  id: string
+  label: string
+  instances: InstanceWithAgents[]
 }
 
 export interface AccountWithInstances {
@@ -84,6 +93,12 @@ interface DashboardState {
   toggleAll: () => void
   clearChecks: () => void
 
+  // Workspaces
+  workspaces: WorkspaceWithInstances[]
+  activeWorkspaceId: string | null
+  setActiveWorkspace: (workspaceId: string | null) => void
+  setWorkspacesFromData: (rawWorkspaces: { id: string; label: string; instances: string[] }[]) => void
+
   // Broadcast
   broadcastMessage: string | null
   broadcastAgents: BroadcastAgent[]
@@ -109,9 +124,37 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null)
   const [broadcastAgents, setBroadcastAgents] = useState<BroadcastAgent[]>([])
   const [dirCache] = useState<Map<string, FileEntry[]>>(new Map())
+  const [rawWorkspaces, setRawWorkspaces] = useState<{ id: string; label: string; instances: string[] }[]>([])
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
 
   // Derive flat instances list from accounts for backward compat
   const instances = useMemo(() => accounts.flatMap(a => a.instances), [accounts])
+
+  // Derive workspace-grouped instances from raw workspace data + current instances
+  const workspaces = useMemo<WorkspaceWithInstances[]>(() => {
+    if (rawWorkspaces.length === 0) return []
+    const instanceMap = new Map(instances.map(i => [i.id, i]))
+    return rawWorkspaces.map(ws => ({
+      id: ws.id,
+      label: ws.label,
+      instances: ws.instances
+        .map(name => instanceMap.get(name))
+        .filter((i): i is InstanceWithAgents => i !== undefined),
+    }))
+  }, [rawWorkspaces, instances])
+
+  const setWorkspacesFromData = useCallback((data: { id: string; label: string; instances: string[] }[]) => {
+    setRawWorkspaces(data)
+    // Auto-select the first workspace if none selected
+    setActiveWorkspaceId(prev => {
+      if (prev && data.some(w => w.id === prev)) return prev
+      return data.length > 0 ? data[0].id : null
+    })
+  }, [])
+
+  const setActiveWorkspace = useCallback((workspaceId: string | null) => {
+    setActiveWorkspaceId(workspaceId)
+  }, [])
 
   const setDirCache = useCallback((instanceId: string, path: string, entries: FileEntry[]) => {
     dirCache.set(`${instanceId}:${path}`, entries)
@@ -255,6 +298,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       viewMode, setViewMode,
       activeFile, setActiveFile,
       dirCache, setDirCache, getDirCache,
+      workspaces, activeWorkspaceId, setActiveWorkspace, setWorkspacesFromData,
       checkedAgents, toggleAgentCheck, toggleInstanceCheck, toggleAll, clearChecks,
       broadcastMessage, broadcastAgents, startBroadcast,
     }}>

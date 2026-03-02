@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useDashboard, AgentInfo, AccountWithInstances } from './context/DashboardContext'
+import { useDashboard, AgentInfo } from './context/DashboardContext'
 import pkg from '../../package.json'
 
 function AgentItem({ instanceId, agent }: { instanceId: string; agent: AgentInfo }) {
@@ -136,34 +136,15 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
   )
 }
 
-function AccountGroup({ account }: { account: AccountWithInstances }) {
-  const { toggleAccountCollapse } = useDashboard()
-
-  return (
-    <div>
-      <button
-        onClick={() => toggleAccountCollapse(account.id)}
-        className="w-full flex items-center gap-2 px-2 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide hover:bg-gray-50 rounded"
-      >
-        <span className="text-[10px]">{account.collapsed ? '\u25B8' : '\u25BE'}</span>
-        <span className="truncate">{account.label}</span>
-        <span className="ml-auto text-gray-300 font-normal normal-case">{account.instances.length}</span>
-      </button>
-      {!account.collapsed && (
-        <div className="space-y-0.5">
-          {account.instances.map(inst => (
-            <MachineItem key={inst.id} instance={inst} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function Sidebar() {
-  const { accounts, instances, checkedAgents, toggleAll, goHome } = useDashboard()
+  const { instances, workspaces, activeWorkspaceId, setActiveWorkspace, checkedAgents, toggleAll, goHome } = useDashboard()
   const [treeCollapsed, setTreeCollapsed] = useState(false)
-  const allAgents = instances.flatMap(i => i.agents.map(a => `${i.id}:${a.id}`))
+
+  // Determine which instances to show: active workspace's instances, or all if no workspaces
+  const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
+  const visibleInstances = activeWorkspace ? activeWorkspace.instances : instances
+
+  const allAgents = visibleInstances.flatMap(i => i.agents.map(a => `${i.id}:${a.id}`))
   const allChecked = allAgents.length > 0 && allAgents.every(k => checkedAgents.has(k))
 
   return (
@@ -172,6 +153,19 @@ export function Sidebar() {
         <h1 className="text-lg font-bold text-gray-900">reef</h1>
         <p className="text-xs text-gray-500">OpenClaw management</p>
       </button>
+      {workspaces.length > 1 && (
+        <div className="px-2 py-1.5 border-b border-gray-100">
+          <select
+            value={activeWorkspaceId || ''}
+            onChange={e => setActiveWorkspace(e.target.value)}
+            className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 text-gray-700"
+          >
+            {workspaces.map(ws => (
+              <option key={ws.id} value={ws.id}>{ws.label} ({ws.instances.length})</option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="px-2 py-1 border-b border-gray-100 flex items-center justify-between">
         <label className="flex items-center gap-2 text-xs text-gray-500 px-2 py-1 cursor-pointer">
           <input
@@ -192,16 +186,10 @@ export function Sidebar() {
       </div>
       {!treeCollapsed && (
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {accounts.length > 1 ? (
-            accounts.map(acct => (
-              <AccountGroup key={acct.id} account={acct} />
-            ))
-          ) : (
-            instances.map(inst => (
-              <MachineItem key={inst.id} instance={inst} />
-            ))
-          )}
-          {instances.length === 0 && (
+          {visibleInstances.map(inst => (
+            <MachineItem key={inst.id} instance={inst} />
+          ))}
+          {visibleInstances.length === 0 && (
             <p className="text-xs text-gray-400 italic px-2 py-4">Loading...</p>
           )}
         </div>
