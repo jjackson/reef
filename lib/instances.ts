@@ -1,17 +1,20 @@
 import { readFile } from 'fs/promises'
 import { loadEnv } from './env'
 import { getSecret } from './1password'
-import { listOpenClawDroplets } from './digitalocean'
+import { createProvider } from './providers'
 import { getBotName } from './mapping'
-import { getAccounts } from './settings'
+import { getAccounts, loadSettings } from './settings'
+import { ensureDefaultWorkspace } from './workspaces'
 
 export interface Instance {
-  id: string       // DO droplet name (used as stable ID)
-  label: string    // Display name (full droplet name)
+  id: string       // droplet/instance name (used as stable ID)
+  label: string    // Display name (full instance name)
   ip: string
-  dropletId: number
-  sshKeyRef: string // op:// reference — not the key itself
-  accountId: string // which DO account owns this instance
+  providerId: string // provider-specific ID (e.g. DO droplet ID)
+  provider: string   // cloud provider type (e.g. "digitalocean")
+  platform: string   // software platform (e.g. "openclaw")
+  sshKeyRef: string  // op:// reference — not the key itself
+  accountId: string  // which account owns this instance
 }
 
 export interface ResolvedInstance extends Instance {
@@ -42,12 +45,15 @@ export async function listInstances(): Promise<Instance[]> {
   loadEnv()
 
   const accounts = getAccounts()
+  const settings = loadSettings()
 
   // If no accounts configured, fall back to legacy env var behavior
   if (accounts.length === 0) {
     const doToken = process.env.DO_API_TOKEN
       || await getSecret(process.env.DO_API_TOKEN_OP_REF!)
-    return listInstancesForAccount('default', doToken)
+    const results = await listInstancesForAccount('default', undefined, doToken)
+    ensureDefaultWorkspace(results.map(i => i.id))
+    return results
   }
 
   // Fetch instances from all accounts in parallel
@@ -55,7 +61,8 @@ export async function listInstances(): Promise<Instance[]> {
     accounts.map(async (account) => {
       try {
         const token = await resolveToken(account.tokenRef)
-        return await listInstancesForAccount(account.id, token)
+        const accountConfig = settings.accounts[account.id]
+        return await listInstancesForAccount(account.id, accountConfig?.provider, token)
       } catch (err) {
         console.warn(`[reef] Failed to list instances for account "${account.id}": ${err instanceof Error ? err.message : err}`)
         return []
@@ -63,24 +70,29 @@ export async function listInstances(): Promise<Instance[]> {
     })
   )
 
-  return results.flat()
+  const flat = results.flat()
+  ensureDefaultWorkspace(flat.map(i => i.id))
+  return flat
 }
 
-async function listInstancesForAccount(accountId: string, doToken: string): Promise<Instance[]> {
-  const droplets = await listOpenClawDroplets(doToken)
+async function listInstancesForAccount(accountId: string, provider: string | undefined, token: string): Promise<Instance[]> {
+  const cloudProvider = createProvider(provider, token)
+  const cloudInstances = await cloudProvider.listInstances()
 
-  return droplets
-    .map((droplet): Instance | null => {
-      const opName = getBotName(droplet.name)
+  return cloudInstances
+    .map((ci): Instance | null => {
+      const opName = getBotName(ci.name)
       if (!opName) {
-        console.warn(`[reef] Skipping droplet: ${droplet.name} (name starts with __)`)
+        console.warn(`[reef] Skipping instance: ${ci.name} (name starts with __)`)
         return null
       }
       return {
-        id: droplet.name,
-        label: droplet.name,
-        ip: droplet.ip,
-        dropletId: droplet.id,
+        id: ci.name,
+        label: ci.name,
+        ip: ci.ip,
+        providerId: ci.providerId,
+        provider: provider || 'digitalocean',
+        platform: 'openclaw',
         sshKeyRef: `op://AI-Agents/${opName} - SSH Key/private key`,
         accountId,
       }
