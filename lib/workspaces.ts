@@ -24,6 +24,7 @@ export function ensureDefaultWorkspace(allInstanceNames: string[]): void {
     for (const name of ws.instances) assigned.add(name)
   }
   const unassigned = allInstanceNames.filter(n => !assigned.has(n))
+  if (unassigned.length === 0 && settings.workspaces.default) return
   if (!settings.workspaces.default) {
     settings.workspaces.default = { label: 'Default', instances: [] }
   }
@@ -37,10 +38,10 @@ export function ensureDefaultWorkspace(allInstanceNames: string[]): void {
 
 export function moveInstance(instanceName: string, workspaceId: string): void {
   const settings = loadSettings()
+  if (!settings.workspaces[workspaceId]) throw new Error(`Workspace "${workspaceId}" not found`)
   for (const ws of Object.values(settings.workspaces)) {
     ws.instances = ws.instances.filter(n => n !== instanceName)
   }
-  if (!settings.workspaces[workspaceId]) throw new Error(`Workspace "${workspaceId}" not found`)
   settings.workspaces[workspaceId].instances.push(instanceName)
   writeSettings(settings)
 }
