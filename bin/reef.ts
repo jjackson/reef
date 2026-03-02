@@ -52,9 +52,18 @@ async function main() {
   switch (command) {
     case 'instances': {
       const instances = await listInstances()
+      const wsIdx = args.indexOf('--workspace')
+      const wsFilter = wsIdx >= 0 ? args[wsIdx + 1] : undefined
+      let filtered = instances
+      if (wsFilter) {
+        const { getWorkspaces } = await import('../lib/workspaces')
+        const ws = getWorkspaces().find(w => w.id === wsFilter)
+        if (!ws) fail(`Workspace not found: ${wsFilter}`)
+        filtered = instances.filter(i => ws!.instances.includes(i.id))
+      }
       console.log(JSON.stringify({
         success: true,
-        instances: instances.map(i => ({ id: i.id, label: i.label, ip: i.ip, account: i.accountId })),
+        instances: filtered.map(i => ({ id: i.id, label: i.label, ip: i.ip, account: i.accountId, provider: i.provider })),
       }))
       break
     }
@@ -295,13 +304,6 @@ async function main() {
       break
     }
 
-    case 'migrate-ssh-keys': {
-      const { migrateSshKeysToSshKeyType } = await import('../lib/1password')
-      const result = await migrateSshKeysToSshKeyType()
-      console.log(JSON.stringify({ success: true, ...result }))
-      break
-    }
-
     case 'create-machine': {
       const [name, ...rest] = args
       if (!name) fail('Usage: reef create-machine <droplet-name> [--account <name>] [--region <slug>] [--size <slug>] [--ssh-key new|<1pass-title>]')
@@ -324,10 +326,45 @@ async function main() {
       break
     }
 
+    case 'workspaces': {
+      const { getWorkspaces } = await import('../lib/workspaces')
+      const workspaces = getWorkspaces()
+      console.log(JSON.stringify({ success: true, workspaces }))
+      break
+    }
+
+    case 'workspace': {
+      const [sub, ...subArgs] = args
+      if (sub === 'create') {
+        const id = subArgs[0]
+        if (!id) fail('Usage: reef workspace create <id> [--label <label>]')
+        const labelIdx = subArgs.indexOf('--label')
+        const label = labelIdx >= 0 ? subArgs[labelIdx + 1] : id
+        const { createWorkspace } = await import('../lib/workspaces')
+        createWorkspace(id, label)
+        console.log(JSON.stringify({ success: true, message: `Workspace "${id}" created` }))
+      } else if (sub === 'move') {
+        const [instanceId, workspaceId] = subArgs
+        if (!workspaceId) fail('Usage: reef workspace move <instance> <workspace>')
+        const { moveInstance } = await import('../lib/workspaces')
+        moveInstance(instanceId, workspaceId)
+        console.log(JSON.stringify({ success: true, message: `Moved "${instanceId}" to "${workspaceId}"` }))
+      } else if (sub === 'delete') {
+        const id = subArgs[0]
+        if (!id) fail('Usage: reef workspace delete <id>')
+        const { deleteWorkspace } = await import('../lib/workspaces')
+        deleteWorkspace(id)
+        console.log(JSON.stringify({ success: true, message: `Workspace "${id}" deleted` }))
+      } else {
+        fail(`Unknown workspace subcommand: ${sub}. Use: create, move, delete`)
+      }
+      break
+    }
+
     case 'help': {
       const commands = [
         'Instance commands:',
-        '  instances                              List all discovered instances',
+        '  instances [--workspace <id>]           List all discovered instances',
         '  health <instance>                      Process status, disk, memory, uptime',
         '  agents <instance>                      List agents on an instance',
         '  status <instance>                      Deep diagnostics (openclaw status --all --deep)',
@@ -361,13 +398,16 @@ async function main() {
         '  create-machine <name> [--account A] [--region R] [--size S] [--ssh-key new|<title>]',
         '                                         Provision new DO droplet with SSH key',
         '',
-        'Migration:',
-        '  migrate-ssh-keys                       Migrate SSH keys from Secure Notes to SshKey items',
-        '',
         'Remote access:',
         '  ssh <instance> <command>               Run arbitrary SSH command',
         '  ls <instance> <path>                   List remote directory',
         '  cat <instance> <path>                  Read remote file',
+        '',
+        'Workspace commands:',
+        '  workspaces                             List all workspaces',
+        '  workspace create <id> [--label <lbl>]  Create a new workspace',
+        '  workspace move <instance> <workspace>  Move instance to workspace',
+        '  workspace delete <id>                  Delete workspace (moves instances to default)',
       ]
       console.log(commands.join('\n'))
       break
