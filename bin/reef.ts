@@ -361,6 +361,48 @@ async function main() {
       break
     }
 
+    case 'insights': {
+      const { getAgentKnowledge, getFleetKnowledge, findSkill } = await import('../lib/insights')
+
+      const skillIdx = args.indexOf('--skill')
+      const skillName = skillIdx >= 0 ? args[skillIdx + 1] : undefined
+
+      const wsIdx = args.indexOf('--workspace')
+      const workspace = wsIdx >= 0 ? args[wsIdx + 1] : undefined
+
+      // reef insights --skill <name>
+      if (skillName) {
+        const matches = await findSkill(skillName)
+        console.log(JSON.stringify({
+          success: true,
+          skill: skillName,
+          agents: matches.map(a => ({
+            instance: a.instance,
+            agentId: a.agentId,
+            agentName: a.agentName,
+          })),
+        }))
+        break
+      }
+
+      // reef insights <instance> <agent>
+      const instanceId = args[0]
+      const agentId = args[1]
+      if (instanceId && agentId && !instanceId.startsWith('--')) {
+        const instance = await requireInstance(instanceId)
+        const knowledge = await getAgentKnowledge(
+          sshConfig(instance), agentId, agentId, '', instanceId
+        )
+        console.log(JSON.stringify({ success: true, ...knowledge }))
+        break
+      }
+
+      // reef insights [--workspace <id>]
+      const fleet = await getFleetKnowledge(workspace)
+      console.log(JSON.stringify({ success: true, ...fleet }))
+      break
+    }
+
     case 'help': {
       const commands = [
         'Instance commands:',
@@ -408,6 +450,11 @@ async function main() {
         '  workspace create <id> [--label <lbl>]  Create a new workspace',
         '  workspace move <instance> <workspace>  Move instance to workspace',
         '  workspace delete <id>                  Delete workspace (moves instances to default)',
+        '',
+        'Insights:',
+        '  insights [instance] [agent]            Fleet-wide or per-agent knowledge inventory',
+        '    --skill <name>                       Find which agents have a specific skill',
+        '    --workspace <id>                     Filter by workspace',
       ]
       console.log(commands.join('\n'))
       break
