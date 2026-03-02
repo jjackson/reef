@@ -2,12 +2,15 @@
 
 ## Project
 
-Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances on Digital Ocean droplets.
+Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances across cloud providers (currently Digital Ocean, with AWS planned).
 
 ## Key architecture decisions
 
-- Droplets are discovered by name pattern (`openclaw` or `open-claw`), not DO tags
-- `config/settings.json` maps DO account names to token refs and per-account droplet name maps (gitignored, copy from `.example`)
+- Cloud providers abstracted behind `CloudProvider` interface in `lib/providers/`; Digital Ocean is the default, AWS planned
+- Instances discovered by name pattern (`openclaw` or `open-claw`), not DO tags
+- Workspaces group instances across accounts; each instance belongs to exactly one workspace
+- Settings auto-creates a "default" workspace for unassigned instances
+- `config/settings.json` maps accounts to provider type, token refs, and per-account name maps (gitignored, copy from `.example`)
 - SSH keys are stored as 1Password **Secure Notes** — resolved via `notesPlain` field, NOT `private key`
 - Labels in the UI use the full droplet name (e.g. `dot-openclaw`), not shortened names
 - SSH key resolution priority: `SSH_PRIVATE_KEY` env → `SSH_KEY_PATH` file → 1Password op:// reference
@@ -15,15 +18,17 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances on Digit
 
 ## File layout
 
-- `lib/` — core modules: `mapping.ts`, `digitalocean.ts`, `instances.ts`, `1password.ts`, `ssh.ts`, `openclaw.ts`
+- `lib/providers/` — cloud provider abstraction: `types.ts` (CloudProvider interface), `digitalocean.ts` (DO adapter), `index.ts` (factory)
+- `lib/` — core modules: `mapping.ts`, `instances.ts`, `workspaces.ts`, `1password.ts`, `ssh.ts`, `openclaw.ts`, `settings.ts`
 - `app/` — Next.js App Router pages and components
 - `app/api/instances/` — 7 API routes (list, health, check, backup, agents, browse, chat)
-- `config/settings.json` — gitignored, maps DO accounts to token refs and droplet-to-1Password name maps
+- `app/api/workspaces/` — workspace CRUD API routes
+- `config/settings.json` — gitignored, maps accounts to provider/token refs, name maps, and workspaces
 - `.env.local` — gitignored, holds `DO_API_TOKEN` and `OP_SERVICE_ACCOUNT_TOKEN`
 
 ## Testing
 
-- Vitest with 20 meaningful tests across 4 files
+- Vitest with 51 meaningful tests across 7 files
 - Worktree paths excluded in `vitest.config.ts`
 - Tests that only verify mocks return mock values were intentionally pruned
 
@@ -43,26 +48,36 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances on Digit
 
 ## Multi-account configuration
 
-Reef supports multiple Digital Ocean accounts. Configure them in `config/settings.json`:
+Reef supports multiple cloud provider accounts and workspaces. Configure them in `config/settings.json`:
 
 ```json
 {
   "accounts": {
     "personal": {
+      "provider": "digitalocean",
       "tokenRef": "op://AI-Agents/Reef - Digital Ocean/credential",
       "nameMap": { "openclaw-hal": "Hal" }
     },
     "work": {
+      "provider": "digitalocean",
       "tokenRef": "op://Work/DO-Token/credential",
       "nameMap": { "openclaw-alpha": "Alpha" }
+    }
+  },
+  "workspaces": {
+    "default": {
+      "label": "Default",
+      "instances": ["openclaw-hal", "openclaw-alpha"]
     }
   }
 }
 ```
 
-- `tokenRef` can be a 1Password `op://` reference or a raw DO API token
-- Each account has its own `nameMap` mapping droplet names to 1Password item prefixes
-- The sidebar groups instances by account when multiple accounts are configured
+- `provider` specifies the cloud provider (defaults to `"digitalocean"` if omitted)
+- `tokenRef` can be a 1Password `op://` reference or a raw API token
+- Each account has its own `nameMap` mapping instance names to 1Password item prefixes
+- Workspaces group instances across accounts; each instance belongs to exactly one workspace
+- The sidebar groups instances by workspace with a workspace switcher when multiple workspaces exist
 - CLI commands work across all accounts by default; `create-machine` accepts `--account`
 - Legacy `DO_API_TOKEN` / `DO_API_TOKEN_OP_REF` env vars still work when no accounts are configured
 
@@ -73,7 +88,7 @@ Reef includes a CLI tool for managing OpenClaw instances from the terminal. All 
 **Setup:** Run `npm link` in the project root to make `reef` available globally (requires sudo on Linux). Alternatively use `npx reef` from the project directory. Run `reef help` for full command list.
 
 **Instance commands** (use droplet name as instance ID, e.g. `openclaw-hal`):
-- `reef instances` — list all discovered instances
+- `reef instances [--workspace <id>]` — list all discovered instances (optionally filtered by workspace)
 - `reef health <instance>` — process status, disk, memory, uptime
 - `reef agents <instance>` — list agents on an instance
 - `reef status <instance>` — deep diagnostics via `openclaw status --all --deep`
@@ -98,6 +113,12 @@ Reef includes a CLI tool for managing OpenClaw instances from the terminal. All 
 - `reef backup <instance> <agent>` — download agent tarball to `./backups/`
 - `reef check-backup <tarball>` — verify tarball integrity
 - `reef deploy <instance> <agent> <tarball>` — push, untar, run doctor
+
+**Workspace commands:**
+- `reef workspaces` — list all workspaces
+- `reef workspace create <id> [--label <label>]` — create a new workspace
+- `reef workspace move <instance> <workspace>` — move instance to workspace
+- `reef workspace delete <id>` — delete workspace (moves instances to default)
 
 **Remote access:**
 - `reef ssh <instance> <command>` — run arbitrary SSH command
