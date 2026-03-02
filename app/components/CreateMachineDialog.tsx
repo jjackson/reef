@@ -12,7 +12,7 @@ interface Size {
   memory: number
   vcpus: number
   disk: number
-  price_monthly: number
+  priceMonthly: number
 }
 
 interface SshKeyItem {
@@ -23,14 +23,14 @@ interface SshKeyItem {
 interface CreateResult {
   success: boolean
   dropletName?: string
-  dropletId?: number
+  instanceId?: string
   ip?: string
   error?: string
 }
 
 function formatSize(s: Size): string {
   const ram = s.memory >= 1024 ? `${s.memory / 1024}GB` : `${s.memory}MB`
-  return `${s.vcpus} vCPU, ${ram} RAM, ${s.disk}GB SSD — $${s.price_monthly}/mo`
+  return `${s.vcpus} vCPU, ${ram} RAM, ${s.disk}GB SSD — $${s.priceMonthly}/mo`
 }
 
 export function CreateMachineDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {

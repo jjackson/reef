@@ -4,16 +4,11 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { getSecret, createSshKeyItem } from '@/lib/1password'
-import {
-  listOpenClawDroplets,
-  listAccountSshKeys,
-  addAccountSshKey,
-  createDroplet,
-  getDroplet,
-} from '@/lib/digitalocean'
+import { createProvider } from '@/lib/providers'
+import type { CloudProvider } from '@/lib/providers'
 import { getBotName } from '@/lib/mapping'
 import { getAccountToken } from '@/lib/instances'
-import { getAccounts, addToNameMap } from '@/lib/settings'
+import { getAccounts, addToNameMap, loadSettings } from '@/lib/settings'
 
 const OPENCLAW_PATTERN = /openclaw|open-claw/i
 
@@ -41,23 +36,23 @@ function generateKeypair(comment: string): { privateKey: string; publicKey: stri
   }
 }
 
-async function ensureSshKeyInDO(token: string, name: string, publicKey: string): Promise<number> {
-  const existing = await listAccountSshKeys(token)
+async function ensureSshKeyInProvider(provider: CloudProvider, name: string, publicKey: string): Promise<number | string> {
+  const existing = await provider.listSshKeys()
   const pubKeyBody = publicKey.split(' ').slice(0, 2).join(' ')
-  const match = existing.find(k => k.public_key.startsWith(pubKeyBody))
+  const match = existing.find(k => k.publicKey.startsWith(pubKeyBody))
   if (match) return match.id
-  const added = await addAccountSshKey(token, name, publicKey)
+  const added = await provider.addSshKey(name, publicKey)
   return added.id
 }
 
-async function waitForIp(token: string, dropletId: number): Promise<string> {
+async function waitForIp(provider: CloudProvider, providerId: string): Promise<string> {
   const maxAttempts = 24
   for (let i = 0; i < maxAttempts; i++) {
-    const d = await getDroplet(token, dropletId)
-    if (d.ip) return d.ip
+    const d = await provider.getInstance(providerId)
+    if (d?.ip) return d.ip
     await new Promise(r => setTimeout(r, 5000))
   }
-  throw new Error('Timed out waiting for droplet IP address (2 minutes)')
+  throw new Error('Timed out waiting for instance IP address (2 minutes)')
 }
 
 export async function POST(request: Request) {
@@ -78,14 +73,17 @@ export async function POST(request: Request) {
     }
 
     const token = await getAccountToken(accountId)
+    const settings = loadSettings()
+    const accountConfig = settings.accounts[accountId]
+    const provider = createProvider(accountConfig?.provider, token)
 
-    // Check for existing droplet with same name
-    const existing = await listOpenClawDroplets(token)
+    // Check for existing instance with same name
+    const existing = await provider.listInstances()
     if (existing.some(d => d.name === name)) {
       return NextResponse.json({ error: `Droplet "${name}" already exists` }, { status: 409 })
     }
 
-    let sshKeyDoId: number
+    let sshKeyId: number | string
     let sshKeyName: string
 
     if (generateKey) {
@@ -96,30 +94,30 @@ export async function POST(request: Request) {
       const { privateKey, publicKey } = generateKeypair(comment)
       const opItem = await createSshKeyItem(capitalized, privateKey)
       sshKeyName = opItem.title
-      sshKeyDoId = await ensureSshKeyInDO(token, sshKeyName, publicKey)
+      sshKeyId = await ensureSshKeyInProvider(provider, sshKeyName, publicKey)
     } else if (sshKeyTitle) {
       // Use existing key from 1Password
       sshKeyName = sshKeyTitle
       const ref = `op://AI-Agents/${sshKeyTitle}/private key`
       const privateKey = await getSecret(ref)
       const publicKey = derivePublicKey(privateKey)
-      sshKeyDoId = await ensureSshKeyInDO(token, sshKeyTitle, publicKey)
+      sshKeyId = await ensureSshKeyInProvider(provider, sshKeyTitle, publicKey)
     } else {
       return NextResponse.json({ error: 'Either sshKeyTitle or generateKey must be provided' }, { status: 400 })
     }
 
-    // Create the droplet
-    const droplet = await createDroplet(token, {
+    // Create the instance
+    const instance = await provider.createInstance({
       name,
       region,
       size,
       image: 'ubuntu-24-04-x64',
-      ssh_keys: [sshKeyDoId],
+      sshKeyIds: [sshKeyId],
       tags: ['openclaw'],
     })
 
     // Poll for IP
-    const ip = await waitForIp(token, droplet.id)
+    const ip = await waitForIp(provider, instance.providerId)
 
     // Update name map in settings
     const botName = getBotName(name) || name
@@ -129,7 +127,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       dropletName: name,
-      dropletId: droplet.id,
+      instanceId: instance.providerId,
       ip,
       region,
       size,
