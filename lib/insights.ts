@@ -1,7 +1,9 @@
 import { runCommand } from './ssh'
 import type { SshConfig } from './ssh'
 
-export interface FileEntry {
+const SAFE_NAME_RE = /^[a-zA-Z0-9_-]+$/
+
+export interface KnowledgeFile {
   name: string
   content: string
   lastModified: string // ISO timestamp
@@ -12,8 +14,8 @@ export interface AgentKnowledge {
   agentId: string
   agentName: string
   agentEmoji: string
-  memories: FileEntry[]
-  skills: FileEntry[]
+  memories: KnowledgeFile[]
+  skills: KnowledgeFile[]
 }
 
 /**
@@ -23,10 +25,10 @@ export interface AgentKnowledge {
 async function readEntries(
   config: SshConfig,
   dirPath: string
-): Promise<FileEntry[]> {
+): Promise<KnowledgeFile[]> {
   const { stdout } = await runCommand(
     config,
-    `ls -1 ${dirPath} 2>/dev/null || true`
+    `ls -1 "${dirPath}" 2>/dev/null || true`
   )
 
   const filenames = stdout
@@ -39,17 +41,20 @@ async function readEntries(
   const entries = await Promise.all(
     filenames.map(async (name) => {
       const filePath = `${dirPath}/${name}`
-      const [catResult, statResult] = await Promise.all([
-        runCommand(config, `cat ${filePath}`),
-        runCommand(config, `stat -c '%Y' ${filePath}`),
-      ])
-      const epochSeconds = parseInt(statResult.stdout.trim(), 10)
+      const result = await runCommand(
+        config,
+        `cat "${filePath}" && echo "___REEF_SEP___" && stat -c '%Y' "${filePath}"`
+      )
+      const sepIdx = result.stdout.lastIndexOf('___REEF_SEP___\n')
+      const content = sepIdx >= 0 ? result.stdout.slice(0, sepIdx) : result.stdout
+      const timestamp = sepIdx >= 0 ? result.stdout.slice(sepIdx + '___REEF_SEP___\n'.length).trim() : '0'
+      const epochSeconds = parseInt(timestamp, 10)
       const lastModified = isNaN(epochSeconds)
         ? new Date(0).toISOString()
         : new Date(epochSeconds * 1000).toISOString()
       return {
         name,
-        content: catResult.stdout,
+        content,
         lastModified,
       }
     })
@@ -68,6 +73,10 @@ export async function getAgentKnowledge(
   agentEmoji?: string,
   instance?: string
 ): Promise<AgentKnowledge> {
+  if (!SAFE_NAME_RE.test(agentId)) {
+    throw new Error(`Invalid agent ID: ${agentId}`)
+  }
+
   const basePath = `$HOME/.openclaw/agents/${agentId}`
 
   const [memories, skills] = await Promise.all([

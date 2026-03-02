@@ -13,46 +13,34 @@ describe('getAgentKnowledge', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('returns memories and skills for an agent', async () => {
-    // ls memories
+    const base = '$HOME/.openclaw/agents/hal'
     mockRunCommand.mockImplementation((_cfg: unknown, cmd: string) => {
-      const base = '$HOME/.openclaw/agents/hal'
-      if (cmd === `ls -1 ${base}/memories 2>/dev/null || true`) {
+      if (cmd === `ls -1 "${base}/memories" 2>/dev/null || true`) {
         return Promise.resolve({ stdout: 'goal.md\nhabits.md\n', stderr: '', code: 0 })
       }
-      if (cmd === `ls -1 ${base}/skills 2>/dev/null || true`) {
+      if (cmd === `ls -1 "${base}/skills" 2>/dev/null || true`) {
         return Promise.resolve({ stdout: 'search.md\n', stderr: '', code: 0 })
       }
-      // cat memory files
-      if (cmd === `cat ${base}/memories/goal.md`) {
-        return Promise.resolve({ stdout: 'Be helpful', stderr: '', code: 0 })
+      // combined cat+stat for memory files
+      if (cmd === `cat "${base}/memories/goal.md" && echo "___REEF_SEP___" && stat -c '%Y' "${base}/memories/goal.md"`) {
+        return Promise.resolve({ stdout: 'Be helpful___REEF_SEP___\n1709000000\n', stderr: '', code: 0 })
       }
-      if (cmd === `cat ${base}/memories/habits.md`) {
-        return Promise.resolve({ stdout: 'Check daily', stderr: '', code: 0 })
+      if (cmd === `cat "${base}/memories/habits.md" && echo "___REEF_SEP___" && stat -c '%Y' "${base}/memories/habits.md"`) {
+        return Promise.resolve({ stdout: 'Check daily___REEF_SEP___\n1709100000\n', stderr: '', code: 0 })
       }
-      // cat skill files
-      if (cmd === `cat ${base}/skills/search.md`) {
-        return Promise.resolve({ stdout: 'Use grep', stderr: '', code: 0 })
-      }
-      // stat memory files
-      if (cmd === `stat -c '%Y' ${base}/memories/goal.md`) {
-        return Promise.resolve({ stdout: '1709000000\n', stderr: '', code: 0 })
-      }
-      if (cmd === `stat -c '%Y' ${base}/memories/habits.md`) {
-        return Promise.resolve({ stdout: '1709100000\n', stderr: '', code: 0 })
-      }
-      // stat skill files
-      if (cmd === `stat -c '%Y' ${base}/skills/search.md`) {
-        return Promise.resolve({ stdout: '1709200000\n', stderr: '', code: 0 })
+      // combined cat+stat for skill files
+      if (cmd === `cat "${base}/skills/search.md" && echo "___REEF_SEP___" && stat -c '%Y' "${base}/skills/search.md"`) {
+        return Promise.resolve({ stdout: 'Use grep___REEF_SEP___\n1709200000\n', stderr: '', code: 0 })
       }
       return Promise.resolve({ stdout: '', stderr: '', code: 1 })
     })
 
-    const result = await getAgentKnowledge(config, 'hal', 'Hal', '🤖', 'openclaw-hal')
+    const result = await getAgentKnowledge(config, 'hal', 'Hal', '\u{1F916}', 'openclaw-hal')
 
     expect(result.instance).toBe('openclaw-hal')
     expect(result.agentId).toBe('hal')
     expect(result.agentName).toBe('Hal')
-    expect(result.agentEmoji).toBe('🤖')
+    expect(result.agentEmoji).toBe('\u{1F916}')
     expect(result.memories).toHaveLength(2)
     expect(result.skills).toHaveLength(1)
 
@@ -79,5 +67,11 @@ describe('getAgentKnowledge', () => {
     expect(result.instance).toBe('')
     expect(result.memories).toEqual([])
     expect(result.skills).toEqual([])
+  })
+
+  it('throws for invalid agent IDs', async () => {
+    await expect(getAgentKnowledge(config, '../etc/passwd')).rejects.toThrow('Invalid agent ID: ../etc/passwd')
+    await expect(getAgentKnowledge(config, 'foo bar')).rejects.toThrow('Invalid agent ID: foo bar')
+    await expect(getAgentKnowledge(config, '')).rejects.toThrow('Invalid agent ID: ')
   })
 })
