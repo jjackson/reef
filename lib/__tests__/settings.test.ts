@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'fs'
 vi.mock('fs', () => ({
   readFileSync: vi.fn(),
   existsSync: vi.fn(),
+  writeFileSync: vi.fn(),
 }))
 
 const mockExistsSync = vi.mocked(existsSync)
@@ -73,5 +74,49 @@ describe('settings', () => {
       'openclaw-eva': 'Eva',
       'openclaw-alpha': 'Alpha',
     })
+  })
+})
+
+describe('workspaces in settings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetSettingsCache()
+  })
+
+  it('loads workspaces from settings', () => {
+    mockExistsSync.mockReturnValue(true)
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      accounts: { personal: { provider: 'digitalocean', tokenRef: 'tok', nameMap: {} } },
+      workspaces: { prod: { label: 'Production', instances: ['openclaw-hal'] } },
+    }))
+    const settings = loadSettings()
+    expect(settings.workspaces).toEqual({ prod: { label: 'Production', instances: ['openclaw-hal'] } })
+  })
+
+  it('returns empty workspaces when none configured', () => {
+    mockExistsSync.mockReturnValue(true)
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      accounts: { personal: { tokenRef: 'tok', nameMap: {} } },
+    }))
+    const settings = loadSettings()
+    expect(settings.workspaces).toEqual({})
+  })
+
+  it('getAccounts includes provider field', () => {
+    mockExistsSync.mockReturnValue(true)
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      accounts: { personal: { provider: 'digitalocean', tokenRef: 'tok', nameMap: {} } },
+    }))
+    const accounts = getAccounts()
+    expect(accounts[0].provider).toBe('digitalocean')
+  })
+
+  it('provider defaults to digitalocean when omitted', () => {
+    mockExistsSync.mockReturnValue(true)
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      accounts: { personal: { tokenRef: 'tok', nameMap: {} } },
+    }))
+    const accounts = getAccounts()
+    expect(accounts[0].provider).toBe('digitalocean')
   })
 })

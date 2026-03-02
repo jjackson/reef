@@ -2,18 +2,26 @@ import { readFileSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 export interface AccountConfig {
+  provider?: string
   tokenRef: string
   nameMap: Record<string, string>
 }
 
+export interface WorkspaceConfig {
+  label: string
+  instances: string[]
+}
+
 export interface Settings {
   accounts: Record<string, AccountConfig>
+  workspaces: Record<string, WorkspaceConfig>
 }
 
 export interface Account {
   id: string
   label: string
   tokenRef: string
+  provider: string
 }
 
 let cached: Settings | null = null
@@ -27,15 +35,15 @@ export function loadSettings(): Settings {
 
   const settingsPath = join(process.cwd(), 'config', 'settings.json')
   if (!existsSync(settingsPath)) {
-    cached = { accounts: {} }
+    cached = { accounts: {}, workspaces: {} }
     return cached
   }
 
   try {
     const raw = JSON.parse(readFileSync(settingsPath, 'utf-8'))
-    cached = { accounts: raw.accounts || {} }
+    cached = { accounts: raw.accounts || {}, workspaces: raw.workspaces || {} }
   } catch {
-    cached = { accounts: {} }
+    cached = { accounts: {}, workspaces: {} }
   }
   return cached
 }
@@ -46,6 +54,7 @@ export function getAccounts(): Account[] {
     id,
     label: id.charAt(0).toUpperCase() + id.slice(1),
     tokenRef: config.tokenRef,
+    provider: config.provider || 'digitalocean',
   }))
 }
 
@@ -70,6 +79,12 @@ export function addToNameMap(accountId: string, dropletName: string, botName: st
     settings.accounts[accountId] = { tokenRef: '', nameMap: {} }
   }
   settings.accounts[accountId].nameMap[dropletName] = botName
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n')
+  cached = settings
+}
+
+export function writeSettings(settings: Settings): void {
+  const settingsPath = join(process.cwd(), 'config', 'settings.json')
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n')
   cached = settings
 }
