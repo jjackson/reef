@@ -51,6 +51,7 @@ async function getInstanceDiagnostics(config: SshConfig): Promise<{
   tailscaleFunnel: string
   gcpProject: string
   activeGmailWatches: string[]
+  openclawVersion: string
 }> {
   const [gogResult, pubsubResult, funnelResult, projectResult, watchResult, versionResult] = await Promise.all([
     runCommand(config, 'GOG_KEYRING_PASSWORD=openclaw gog auth list 2>/dev/null || true'),

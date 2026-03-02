@@ -9,6 +9,8 @@ export function InstanceDetail() {
   const [restartMsg, setRestartMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [restartLoading, setRestartLoading] = useState(false)
+  const [confirmReboot, setConfirmReboot] = useState(false)
+  const [rebootLoading, setRebootLoading] = useState(false)
   const [showAddChannel, setShowAddChannel] = useState(false)
   const [googleSetupLoading, setGoogleSetupLoading] = useState(false)
   const [installLoading, setInstallLoading] = useState(false)
@@ -73,6 +75,25 @@ export function InstanceDetail() {
     }
   }
 
+  async function handleReboot() {
+    if (!confirmReboot) {
+      setConfirmReboot(true)
+      return
+    }
+    setConfirmReboot(false)
+    setRebootLoading(true)
+    setRestartMsg(null)
+    try {
+      const res = await fetch(`/api/instances/${instance!.id}/reboot`, { method: 'POST' })
+      const data = await res.json()
+      setRestartMsg({ text: data.success ? 'Machine reboot initiated — it may take a minute to come back online' : data.error || 'Reboot failed', ok: data.success })
+    } catch (e) {
+      setRestartMsg({ text: e instanceof Error ? e.message : 'Unknown error', ok: false })
+    } finally {
+      setRebootLoading(false)
+    }
+  }
+
   async function handleInstall() {
     setInstallLoading(true)
     try {
@@ -124,14 +145,15 @@ export function InstanceDetail() {
                 </div>
               </div>
             </div>
-            {/* Restart button — small, top-right */}
+            {/* Restart / Reboot buttons — small, top-right */}
             <div className="flex items-center gap-1.5">
               {confirmRestart ? (
                 <>
+                  <span className="text-[10px] text-slate-400">Restart service?</span>
                   <button
                     onClick={handleRestart}
                     disabled={restartLoading}
-                    className="text-[11px] px-2 py-1 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 transition-colors font-medium"
+                    className="text-[11px] px-2 py-1 rounded-md bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-40 transition-colors font-medium"
                   >
                     Confirm
                   </button>
@@ -142,15 +164,42 @@ export function InstanceDetail() {
                     Cancel
                   </button>
                 </>
+              ) : confirmReboot ? (
+                <>
+                  <span className="text-[10px] text-red-500">Reboot machine?</span>
+                  <button
+                    onClick={handleReboot}
+                    disabled={rebootLoading}
+                    className="text-[11px] px-2 py-1 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 transition-colors font-medium"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    onClick={() => setConfirmReboot(false)}
+                    className="text-[11px] px-2 py-1 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors font-medium"
+                  >
+                    Cancel
+                  </button>
+                </>
               ) : (
-                <button
-                  onClick={handleRestart}
-                  disabled={restartLoading}
-                  className="text-[11px] px-2 py-1 rounded-md text-slate-400 hover:text-orange-600 hover:bg-orange-50 disabled:opacity-40 transition-colors font-medium"
-                  title="Restart OpenClaw"
-                >
-                  &#x21BA; {restartLoading ? 'Restarting...' : 'Restart'}
-                </button>
+                <>
+                  <button
+                    onClick={handleRestart}
+                    disabled={restartLoading}
+                    className="text-[11px] px-2 py-1 rounded-md text-slate-400 hover:text-orange-600 hover:bg-orange-50 disabled:opacity-40 transition-colors font-medium"
+                    title="Restart OpenClaw service"
+                  >
+                    &#x21BA; {restartLoading ? 'Restarting...' : 'Restart Service'}
+                  </button>
+                  <button
+                    onClick={handleReboot}
+                    disabled={rebootLoading}
+                    className="text-[11px] px-2 py-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors font-medium"
+                    title="Reboot the entire machine"
+                  >
+                    &#x23FB; {rebootLoading ? 'Rebooting...' : 'Reboot Machine'}
+                  </button>
+                </>
               )}
             </div>
           </div>
