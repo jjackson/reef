@@ -153,17 +153,23 @@ export function Sidebar() {
         <h1 className="text-lg font-bold text-gray-900">reef</h1>
         <p className="text-xs text-gray-500">OpenClaw management</p>
       </button>
-      {workspaces.length > 1 && (
+      {workspaces.length > 0 && (
         <div className="px-2 py-1.5 border-b border-gray-100">
-          <select
-            value={activeWorkspaceId || ''}
-            onChange={e => setActiveWorkspace(e.target.value)}
-            className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 text-gray-700"
-          >
-            {workspaces.map(ws => (
-              <option key={ws.id} value={ws.id}>{ws.label} ({ws.instances.length})</option>
-            ))}
-          </select>
+          {workspaces.length > 1 ? (
+            <select
+              value={activeWorkspaceId || ''}
+              onChange={e => setActiveWorkspace(e.target.value)}
+              className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 text-gray-700"
+            >
+              {workspaces.map(ws => (
+                <option key={ws.id} value={ws.id}>{ws.label} ({ws.instances.length})</option>
+              ))}
+            </select>
+          ) : (
+            <div className="text-xs text-gray-500 px-2 py-0.5">
+              {activeWorkspace?.label || 'Default'} <span className="text-gray-400">({visibleInstances.length})</span>
+            </div>
+          )}
         </div>
       )}
       <div className="px-2 py-1 border-b border-gray-100 flex items-center justify-between">
