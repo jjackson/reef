@@ -77,6 +77,36 @@ export async function saveChannelToken(
   return { id: item.id, title: item.title }
 }
 
+export async function saveApiKey(
+  displayName: string,
+  apiKey: string
+): Promise<{ id: string; title: string }> {
+  const client = await getClient()
+  const vaultId = await getVaultId()
+  const title = `${displayName} - Anthropic API Key`
+
+  // Delete existing items with the same title to avoid duplicates
+  const existing = await client.items.list(vaultId)
+  for (const item of existing) {
+    if (item.title === title) {
+      await client.items.delete(vaultId, item.id)
+    }
+  }
+
+  const item = await client.items.create({
+    category: ItemCategory.ApiCredentials,
+    vaultId,
+    title,
+    fields: [{
+      id: 'credential',
+      title: 'credential',
+      value: apiKey,
+      fieldType: ItemFieldType.Concealed,
+    }],
+  })
+  return { id: item.id, title: item.title }
+}
+
 export async function createSshKeyItem(name: string, privateKey: string): Promise<{ id: string; title: string }> {
   const client = await getClient()
   const vaultId = await getVaultId()
