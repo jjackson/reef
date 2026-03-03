@@ -171,7 +171,7 @@ export function Sidebar() {
           ) : (
             <div className="px-2 py-0.5">
               <div className="text-xs font-medium text-gray-700">
-                {activeWorkspace?.label || 'Default'} <span className="text-gray-400 font-normal">({visibleInstances.length})</span>
+                {activeWorkspace?.label || workspaces[0]?.label || 'Default'} <span className="text-gray-400 font-normal">({visibleInstances.length})</span>
               </div>
             </div>
           )}

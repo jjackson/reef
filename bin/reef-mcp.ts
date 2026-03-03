@@ -296,6 +296,9 @@ server.registerTool(
       if (!remotePath.startsWith('~/.openclaw/')) {
         return errorResult('Path must start with ~/.openclaw/ for security')
       }
+      if (remotePath.includes('..')) {
+        return errorResult('Path traversal (..) is not allowed')
+      }
 
       const resolved = await resolveOrError(instanceId)
       if (!resolved) return errorResult(`Instance not found: ${instanceId}`)
@@ -332,6 +335,9 @@ server.registerTool(
     try {
       if (!remotePath.startsWith('~/.openclaw/')) {
         return errorResult('Path must start with ~/.openclaw/ for security')
+      }
+      if (remotePath.includes('..')) {
+        return errorResult('Path traversal (..) is not allowed')
       }
 
       const resolved = await resolveOrError(instanceId)

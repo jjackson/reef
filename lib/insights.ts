@@ -135,10 +135,11 @@ export async function getFleetKnowledge(workspace?: string): Promise<FleetKnowle
   if (workspace) {
     const settings = loadSettings()
     const ws = settings.workspaces[workspace]
-    if (ws) {
-      const wsInstances = new Set(ws.instances)
-      allInstances = allInstances.filter((inst) => wsInstances.has(inst.id))
+    if (!ws) {
+      throw new Error(`Workspace not found: ${workspace}`)
     }
+    const wsInstances = new Set(ws.instances)
+    allInstances = allInstances.filter((inst) => wsInstances.has(inst.id))
   }
 
   const results = await Promise.allSettled(
