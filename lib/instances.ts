@@ -31,7 +31,10 @@ export async function resolveSSHKey(opRef: string): Promise<string> {
     return readFile(keyPath, 'utf-8')
   }
 
-  return getSecret(opRef)
+  const raw = await getSecret(opRef)
+  // 1Password Secure Notes may include the item title before the key
+  const beginIdx = raw.indexOf('-----BEGIN')
+  return beginIdx > 0 ? raw.substring(beginIdx) : raw
 }
 
 async function resolveToken(tokenRef: string): Promise<string> {
