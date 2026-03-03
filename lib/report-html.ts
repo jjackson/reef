@@ -9,6 +9,49 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;')
 }
 
+function extractSkillDescription(content: string): string {
+  const lines = content.split('\n').slice(0, 10)
+  for (const line of lines) {
+    const match = line.match(/^description:\s*(.+)/i)
+    if (match) return match[1].trim().slice(0, 100)
+  }
+  // Fallback: first non-heading, non-empty line
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    return trimmed.slice(0, 100)
+  }
+  return ''
+}
+
+function renderMarkdownHtml(raw: string): string {
+  return raw.split('\n').map(line => {
+    if (!line.trim()) return '<div style="height:0.5em;"></div>'
+    // Headings
+    const h4 = line.match(/^####\s+(.+)/)
+    if (h4) return `<div style="font-weight:600;font-size:0.8rem;margin:0.5em 0 0.25em;">${escapeHtml(h4[1])}</div>`
+    const h3 = line.match(/^###\s+(.+)/)
+    if (h3) return `<div style="font-weight:600;font-size:0.85rem;margin:0.5em 0 0.25em;">${escapeHtml(h3[1])}</div>`
+    const h2 = line.match(/^##\s+(.+)/)
+    if (h2) return `<div style="font-weight:700;font-size:0.9rem;margin:0.6em 0 0.25em;">${escapeHtml(h2[1])}</div>`
+    const h1 = line.match(/^#\s+(.+)/)
+    if (h1) return `<div style="font-weight:700;font-size:1rem;margin:0.6em 0 0.25em;">${escapeHtml(h1[1])}</div>`
+    // List items
+    const li = line.match(/^[-*]\s+(.+)/)
+    if (li) return `<div style="padding-left:1em;"><span style="color:var(--slate-400);">&bull;</span> ${inlineMarkdown(li[1])}</div>`
+    // Normal text
+    return `<div>${inlineMarkdown(line)}</div>`
+  }).join('\n')
+}
+
+function inlineMarkdown(text: string): string {
+  let result = escapeHtml(text)
+  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  result = result.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  result = result.replace(/`(.+?)`/g, '<code style="background:var(--slate-100);padding:0.1em 0.3em;border-radius:0.2em;font-size:0.85em;">$1</code>')
+  return result
+}
+
 function getStyles(): string {
   return `
     :root {
@@ -38,16 +81,21 @@ function getStyles(): string {
     .header .subtitle { font-size: 0.875rem; color: var(--slate-500); margin-top: 0.25rem; }
     .header .timestamp { font-size: 0.75rem; color: var(--slate-400); margin-top: 0.5rem; }
 
-    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+    .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 2rem; }
     .card {
       background: white; border: 1px solid var(--slate-200); border-radius: 0.75rem;
       padding: 1.25rem; text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      transition: box-shadow 0.15s, transform 0.15s;
     }
+    .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); transform: translateY(-1px); }
     .card .value { font-size: 1.75rem; font-weight: 700; }
     .card .label { font-size: 0.75rem; color: var(--slate-500); margin-top: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card-detail { font-size: 0.7rem; color: var(--slate-400); margin-top: 0.125rem; }
     .card.indigo .value { color: var(--indigo-600); }
     .card.amber .value { color: var(--amber-600); }
     .card.emerald .value { color: var(--emerald-600); }
+    .card.slate .value { color: var(--slate-700); }
 
     .section { margin-bottom: 2rem; }
     .section-title {
@@ -68,8 +116,11 @@ function getStyles(): string {
       font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em;
     }
     .matrix-table th.skill-name { text-align: left; }
+    .matrix-table th.skill-desc { text-align: left; }
     .matrix-table td.skill-name { text-align: left; font-weight: 500; }
     .matrix-table td.skill-name code { font-size: 0.8rem; color: var(--indigo-700); }
+    .matrix-table td.skill-desc { text-align: left; font-size: 0.75rem; color: var(--slate-500); max-width: 250px; }
+    .matrix-table .alt-row { background: var(--slate-50); }
     .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--indigo-500); }
     .dot-empty { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--slate-200); }
     .instance-name-header {
@@ -80,13 +131,15 @@ function getStyles(): string {
     .instance-card {
       background: white; border: 1px solid var(--slate-200); border-radius: 0.75rem;
       margin-bottom: 1rem; overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     }
     .instance-card summary {
       padding: 0.875rem 1.25rem; cursor: pointer; display: flex;
       align-items: center; justify-content: space-between;
       background: var(--slate-50); border-bottom: 1px solid var(--slate-200);
-      list-style: none;
+      list-style: none; transition: background 0.15s;
     }
+    .instance-card summary:hover { background: var(--slate-100); }
     .instance-card summary::-webkit-details-marker { display: none; }
     .instance-card summary::before {
       content: '\\25B6'; font-size: 0.6rem; color: var(--slate-400);
@@ -106,6 +159,8 @@ function getStyles(): string {
     .knowledge-label.skills { color: var(--indigo-600); }
     .knowledge-label.memories { color: var(--amber-600); }
     .knowledge-label.identity { color: var(--emerald-600); }
+    .knowledge-label.config { color: var(--slate-600); }
+    .knowledge-label.docs { color: var(--slate-500); }
 
     .file-card {
       border: 1px solid var(--slate-200); border-radius: 0.5rem;
@@ -125,10 +180,12 @@ function getStyles(): string {
     .file-card .file-name.skill { color: var(--indigo-700); }
     .file-card .file-name.memory { color: var(--amber-700); }
     .file-card .file-name.identity-file { color: var(--emerald-700); }
+    .file-card .file-name.config-file { color: var(--slate-600); }
+    .file-card .file-name.doc-file { color: var(--slate-500); }
     .file-card .file-date { font-size: 0.7rem; color: var(--slate-400); margin-left: auto; }
     .file-content {
       padding: 0.75rem; background: var(--slate-50); border-top: 1px solid var(--slate-100);
-      font-size: 0.8rem; white-space: pre-wrap; word-wrap: break-word;
+      font-size: 0.8rem; line-height: 1.5;
       max-height: 500px; overflow-y: auto;
     }
 
@@ -139,6 +196,18 @@ function getStyles(): string {
     .badge.indigo { background: var(--indigo-50); color: var(--indigo-700); }
     .badge.amber { background: var(--amber-50); color: var(--amber-700); }
     .badge.emerald { background: var(--emerald-50); color: var(--emerald-700); }
+    .badge.slate { background: var(--slate-100); color: var(--slate-600); }
+    .badge.slate-light { background: var(--slate-50); color: var(--slate-500); border: 1px solid var(--slate-200); }
+
+    .narrative-card {
+      background: white; border: 1px solid var(--slate-200); border-radius: 0.75rem;
+      padding: 1rem 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .narrative-item {
+      padding: 0.5rem 0; font-size: 0.85rem; color: var(--slate-700);
+      border-bottom: 1px solid var(--slate-100);
+    }
+    .narrative-item:last-child { border-bottom: none; }
 
     .copy-cmd {
       display: block; padding: 0.5rem 0.75rem; background: var(--slate-800);
@@ -175,6 +244,8 @@ function getStyles(): string {
       body { padding: 1rem; }
       .cards { grid-template-columns: repeat(2, 1fr); }
       .matrix-table { font-size: 0.7rem; }
+      .matrix-table td.skill-desc { display: none; }
+      .matrix-table th.skill-desc { display: none; }
     }
   `
 }
@@ -198,6 +269,17 @@ function renderSummaryCards(fleet: FleetKnowledge): string {
   const withSkills = fleet.instances.filter(i => i.skills.length > 0).length
   const coverage = instanceCount > 0 ? Math.round((withSkills / instanceCount) * 100) : 0
 
+  // Knowledge leader: instance with most skills + memories
+  let leader = ''
+  let leaderScore = 0
+  for (const inst of fleet.instances) {
+    const score = inst.skills.length + inst.memories.length
+    if (score > leaderScore) {
+      leaderScore = score
+      leader = inst.instance
+    }
+  }
+
   return `
     <div class="cards">
       <div class="card">
@@ -215,7 +297,67 @@ function renderSummaryCards(fleet: FleetKnowledge): string {
       <div class="card emerald">
         <div class="value">${coverage}%</div>
         <div class="label">Skill Coverage</div>
+        <div class="card-detail">${withSkills} of ${instanceCount} instances</div>
       </div>
+      ${leader ? `
+      <div class="card slate">
+        <div class="value mono" style="font-size:1rem;">${escapeHtml(leader)}</div>
+        <div class="label">Knowledge Leader</div>
+        <div class="card-detail">${leaderScore} files</div>
+      </div>
+      ` : ''}
+    </div>
+  `
+}
+
+function renderFleetNarrative(fleet: FleetKnowledge): string {
+  const observations: string[] = []
+
+  // Knowledge leader
+  let leader = ''
+  let leaderScore = 0
+  for (const inst of fleet.instances) {
+    const score = inst.skills.length + inst.memories.length
+    if (score > leaderScore) {
+      leaderScore = score
+      leader = inst.instance
+    }
+  }
+  if (leader) {
+    observations.push(`<strong>${escapeHtml(leader)}</strong> leads with ${leaderScore} knowledge files (skills + memories).`)
+  }
+
+  // Skill-less instances
+  const skillLess = fleet.instances.filter(i => i.skills.length === 0)
+  if (skillLess.length > 0) {
+    const names = skillLess.map(i => `<code>${escapeHtml(i.instance)}</code>`).join(', ')
+    observations.push(`${skillLess.length} instance${skillLess.length !== 1 ? 's have' : ' has'} no skills: ${names}. Consider transferring skills from peers.`)
+  }
+
+  // Most common skill
+  const skillEntries = Object.entries(fleet.skillIndex).sort(([, a], [, b]) => b.length - a.length)
+  if (skillEntries.length > 0) {
+    const [topSkill, topOwners] = skillEntries[0]
+    observations.push(`Most common skill: <code>${escapeHtml(topSkill)}</code> (${topOwners.length} of ${fleet.instances.length} instances).`)
+  }
+
+  // Unique skills (only on one instance — transfer candidates)
+  const unique = skillEntries.filter(([, owners]) => owners.length === 1)
+  if (unique.length > 0) {
+    const list = unique.map(([name, owners]) => `<code>${escapeHtml(name)}</code> (${escapeHtml(owners[0])})`).join(', ')
+    observations.push(`Unique skills worth sharing: ${list}.`)
+  }
+
+  if (observations.length === 0) return ''
+
+  const items = observations.map(o => `
+    <div class="narrative-item">${o}</div>
+  `).join('')
+
+  return `
+    <div class="section">
+      <div class="section-title">Fleet Observations</div>
+      <div class="narrative-card">${items}</div>
     </div>
   `
 }
@@ -230,22 +372,34 @@ function renderSkillMatrix(fleet: FleetKnowledge): string {
     instanceSkillSets.set(inst.instance, new Set(inst.skills.map(s => s.name)))
   }
 
+  // Build skill descriptions map from fleet data
+  const skillDescriptions = new Map<string, string>()
+  for (const inst of fleet.instances) {
+    for (const skill of inst.skills) {
+      if (!skillDescriptions.has(skill.name)) {
+        const desc = extractSkillDescription(skill.content)
+        if (desc) skillDescriptions.set(skill.name, desc)
+      }
+    }
+  }
+
   const headerCells = instanceIds.map(id =>
     `<th><span class="instance-name-header mono">${escapeHtml(id)}</span></th>`
   ).join('')
 
-  const rows = skills.map(([skillName, owners]) => {
+  const rows = skills.map(([skillName, owners], idx) => {
+    const desc = skillDescriptions.get(skillName) || ''
     const cells = instanceIds.map(id => {
       const has = instanceSkillSets.get(id)?.has(skillName)
       if (has) return '<td><span class="dot" title="Has skill"></span></td>'
 
-      // Show copy command for missing skills — pick the first owner as source
       const source = owners[0]
       const cmd = `reef ssh ${source} "cat ~/.openclaw/workspace/skills/${skillName}/SKILL.md" | reef ssh ${id} "mkdir -p ~/.openclaw/workspace/skills/${skillName} && cat > ~/.openclaw/workspace/skills/${skillName}/SKILL.md"`
       return `<td><span class="dot-empty" title="Missing — copy from ${escapeHtml(source)}&#10;${escapeHtml(cmd)}"></span></td>`
     }).join('')
 
-    return `<tr><td class="skill-name"><code>${escapeHtml(skillName)}</code></td>${cells}</tr>`
+    const rowClass = idx % 2 === 1 ? ' class="alt-row"' : ''
+    return `<tr${rowClass}><td class="skill-name"><code>${escapeHtml(skillName)}</code></td><td class="skill-desc">${escapeHtml(desc)}</td>${cells}</tr>`
   }).join('')
 
   return `
@@ -253,7 +407,7 @@ function renderSkillMatrix(fleet: FleetKnowledge): string {
       <div class="section-title">Skill Distribution Matrix</div>
       <div style="overflow-x: auto;">
         <table class="matrix-table">
-          <thead><tr><th class="skill-name">Skill</th>${headerCells}</tr></thead>
+          <thead><tr><th class="skill-name">Skill</th><th class="skill-desc">Description</th>${headerCells}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -271,11 +425,22 @@ function formatDate(iso: string): string {
   }
 }
 
+type FileType = 'skill' | 'memory' | 'identity-file' | 'config-file' | 'doc-file'
+
+const FILE_TYPE_BADGES: Record<FileType, { label: string; color: string }> = {
+  'skill': { label: 'SKILL', color: 'indigo' },
+  'memory': { label: 'MEMORY', color: 'amber' },
+  'identity-file': { label: 'IDENTITY', color: 'emerald' },
+  'config-file': { label: 'CONFIG', color: 'slate' },
+  'doc-file': { label: 'DOC', color: 'slate-light' },
+}
+
 function renderFileCards(
   files: { name: string; content: string; lastModified: string }[],
-  type: 'skill' | 'memory' | 'identity-file',
+  type: FileType,
   instanceId: string
 ): string {
+  const badgeInfo = FILE_TYPE_BADGES[type]
   return files.map(f => {
     const browseUrl = type === 'skill'
       ? `http://localhost:3050/api/instances/${encodeURIComponent(instanceId)}/browse/read?path=~/.openclaw/workspace/skills/${encodeURIComponent(f.name)}/SKILL.md`
@@ -287,11 +452,12 @@ function renderFileCards(
     return `
       <details class="file-card">
         <summary>
+          <span class="badge ${badgeInfo.color}">${badgeInfo.label}</span>
           <span class="file-name ${type} mono">${escapeHtml(f.name)}</span>
           <a href="${escapeHtml(browseUrl)}" target="_blank" title="View in Reef">view<span class="localhost-badge">localhost:3050</span></a>
           ${dateStr ? `<span class="file-date">${escapeHtml(dateStr)}</span>` : ''}
         </summary>
-        <pre class="file-content mono">${escapeHtml(f.content)}</pre>
+        <div class="file-content">${renderMarkdownHtml(f.content)}</div>
       </details>
     `
   }).join('')
@@ -306,11 +472,15 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
   })
 
   const cards = sorted.map(inst => {
-    const totalFiles = inst.skills.length + inst.memories.length + inst.identity.length
+    const configFiles = inst.config || []
+    const docFiles = inst.docs || []
+    const totalFiles = inst.skills.length + inst.memories.length + inst.identity.length + configFiles.length + docFiles.length
     const meta = [
       inst.skills.length > 0 ? `${inst.skills.length} skill${inst.skills.length !== 1 ? 's' : ''}` : null,
       inst.memories.length > 0 ? `${inst.memories.length} memor${inst.memories.length !== 1 ? 'ies' : 'y'}` : null,
       inst.identity.length > 0 ? `${inst.identity.length} identity` : null,
+      configFiles.length > 0 ? `${configFiles.length} config` : null,
+      docFiles.length > 0 ? `${docFiles.length} doc${docFiles.length !== 1 ? 's' : ''}` : null,
     ].filter(Boolean).join(', ')
 
     let body = ''
@@ -320,7 +490,7 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
       if (inst.identity.length > 0) {
         body += `
           <div class="knowledge-section">
-            <div class="knowledge-label identity">Identity Files</div>
+            <div class="knowledge-label identity">Identity</div>
             ${renderFileCards(inst.identity, 'identity-file', inst.instance)}
           </div>
         `
@@ -341,10 +511,26 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
           </div>
         `
       }
+      if (configFiles.length > 0) {
+        body += `
+          <div class="knowledge-section">
+            <div class="knowledge-label config">Config</div>
+            ${renderFileCards(configFiles, 'config-file', inst.instance)}
+          </div>
+        `
+      }
+      if (docFiles.length > 0) {
+        body += `
+          <div class="knowledge-section">
+            <div class="knowledge-label docs">Workspace Docs</div>
+            ${renderFileCards(docFiles, 'doc-file', inst.instance)}
+          </div>
+        `
+      }
     }
 
     return `
-      <details class="instance-card" ${totalFiles > 0 ? '' : ''}>
+      <details class="instance-card">
         <summary>
           <span style="display:flex;align-items:center;">
             <span class="instance-name mono">${escapeHtml(inst.instance)}</span>
@@ -363,6 +549,53 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
         Links in this report point to <strong>localhost:3050</strong> and require the Reef dev server to be running locally.
       </div>
       ${cards}
+    </div>
+  `
+}
+
+function renderDeploySection(fleet: FleetKnowledge): string {
+  const skills = Object.entries(fleet.skillIndex).sort(([, a], [, b]) => b.length - a.length)
+  const instanceIds = fleet.instances.map(i => i.instance)
+  const instanceSkillSets = new Map<string, Set<string>>()
+  for (const inst of fleet.instances) {
+    instanceSkillSets.set(inst.instance, new Set(inst.skills.map(s => s.name)))
+  }
+
+  // Group missing skills by target instance
+  const missingByInstance = new Map<string, { skill: string; source: string }[]>()
+  for (const [skillName, owners] of skills) {
+    for (const id of instanceIds) {
+      if (!instanceSkillSets.get(id)?.has(skillName)) {
+        if (!missingByInstance.has(id)) missingByInstance.set(id, [])
+        missingByInstance.get(id)!.push({ skill: skillName, source: owners[0] })
+      }
+    }
+  }
+
+  if (missingByInstance.size === 0) return ''
+
+  const blocks = Array.from(missingByInstance.entries()).map(([target, missing]) => {
+    const cmds = missing.map(({ skill, source }) => {
+      const cmd = `reef ssh ${source} "cat ~/.openclaw/workspace/skills/${skill}/SKILL.md" | reef ssh ${target} "mkdir -p ~/.openclaw/workspace/skills/${skill} && cat > ~/.openclaw/workspace/skills/${skill}/SKILL.md"`
+      return `<code class="copy-cmd">${escapeHtml(cmd)}</code>`
+    }).join('')
+    return `
+      <div style="margin-bottom:1rem;">
+        <div style="font-weight:600;font-size:0.8rem;margin-bottom:0.375rem;" class="mono">${escapeHtml(target)} <span style="color:var(--slate-400);font-weight:400;">(${missing.length} missing)</span></div>
+        ${cmds}
+      </div>
+    `
+  }).join('')
+
+  return `
+    <div class="section">
+      <details class="instance-card">
+        <summary>
+          <span class="instance-name">Deploy Missing Skills</span>
+          <span class="instance-meta">copy commands for skill gaps</span>
+        </summary>
+        <div class="instance-body">${blocks}</div>
+      </details>
     </div>
   `
 }
@@ -389,7 +622,9 @@ export function generateFleetReport(fleet: FleetKnowledge, workspaceLabel?: stri
 <body>
   ${renderHeader(workspaceLabel)}
   ${renderSummaryCards(fleet)}
+  ${renderFleetNarrative(fleet)}
   ${renderSkillMatrix(fleet)}
+  ${renderDeploySection(fleet)}
   ${renderInstanceDetails(fleet)}
   ${renderFooter()}
 </body>

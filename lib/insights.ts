@@ -13,7 +13,9 @@ export interface InstanceKnowledge {
   instance: string
   memories: KnowledgeFile[]
   skills: KnowledgeFile[]
-  identity: KnowledgeFile[]  // SOUL.md, IDENTITY.md, USER.md, etc.
+  identity: KnowledgeFile[]  // SOUL.md, IDENTITY.md, USER.md, AGENTS.md only
+  config: KnowledgeFile[]    // TOOLS.md, HEARTBEAT.md, MEMORY.md, BOOTSTRAP.md
+  docs: KnowledgeFile[]      // everything else from workspace root
 }
 
 export interface FleetKnowledge {
@@ -21,6 +23,27 @@ export interface FleetKnowledge {
   skillIndex: Record<string, string[]>  // skill dir name -> instance IDs that have it
   totalMemories: number
   totalSkills: number
+}
+
+const IDENTITY_FILES = new Set(['SOUL.md', 'USER.md', 'AGENTS.md', 'IDENTITY.md'])
+const CONFIG_FILES = new Set(['TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md', 'BOOTSTRAP.md'])
+
+export function classifyWorkspaceFiles(files: KnowledgeFile[]): {
+  identity: KnowledgeFile[]
+  config: KnowledgeFile[]
+  docs: KnowledgeFile[]
+} {
+  const identity: KnowledgeFile[] = []
+  const config: KnowledgeFile[] = []
+  const docs: KnowledgeFile[] = []
+
+  for (const f of files) {
+    if (IDENTITY_FILES.has(f.name)) identity.push(f)
+    else if (CONFIG_FILES.has(f.name)) config.push(f)
+    else docs.push(f)
+  }
+
+  return { identity, config, docs }
 }
 
 /**
@@ -102,13 +125,16 @@ export async function getInstanceKnowledge(
 
   const memories = await readFiles(config, `${ws}/memory`)
   const skills = await readSkills(config, `${ws}/skills`)
-  const identity = await readFiles(config, ws)
+  const wsFiles = await readFiles(config, ws)
+  const { identity, config: configFiles, docs } = classifyWorkspaceFiles(wsFiles)
 
   return {
     instance: instanceId,
     memories,
     skills,
     identity,
+    config: configFiles,
+    docs,
   }
 }
 

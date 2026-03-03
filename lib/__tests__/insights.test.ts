@@ -21,7 +21,7 @@ vi.mock('../settings', () => ({
   resetSettingsCache: vi.fn(),
 }))
 
-import { getInstanceKnowledge, getFleetKnowledge, findSkill } from '../insights'
+import { getInstanceKnowledge, getFleetKnowledge, findSkill, classifyWorkspaceFiles } from '../insights'
 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
@@ -91,6 +91,8 @@ describe('getInstanceKnowledge', () => {
 
     expect(result.identity[0].name).toBe('SOUL.md')
     expect(result.identity[0].content).toBe('I am helpful')
+    expect(result.config).toEqual([])
+    expect(result.docs).toEqual([])
 
     // Should be exactly 3 SSH calls (one per directory)
     expect(mockRunCommand).toHaveBeenCalledTimes(3)
@@ -105,6 +107,31 @@ describe('getInstanceKnowledge', () => {
     expect(result.memories).toEqual([])
     expect(result.skills).toEqual([])
     expect(result.identity).toEqual([])
+    expect(result.config).toEqual([])
+    expect(result.docs).toEqual([])
+  })
+})
+
+describe('classifyWorkspaceFiles', () => {
+  it('sorts files into identity, config, and docs categories', () => {
+    const files = [
+      { name: 'SOUL.md', content: 'I am helpful', lastModified: '2024-01-01T00:00:00.000Z' },
+      { name: 'TOOLS.md', content: 'Tool config', lastModified: '2024-01-01T00:00:00.000Z' },
+      { name: 'RandomDoc.md', content: 'Some doc', lastModified: '2024-01-01T00:00:00.000Z' },
+      { name: 'IDENTITY.md', content: 'Name: Eva', lastModified: '2024-01-01T00:00:00.000Z' },
+      { name: 'HEARTBEAT.md', content: 'Heartbeat config', lastModified: '2024-01-01T00:00:00.000Z' },
+    ]
+
+    const result = classifyWorkspaceFiles(files)
+
+    expect(result.identity).toHaveLength(2)
+    expect(result.identity.map(f => f.name)).toEqual(['SOUL.md', 'IDENTITY.md'])
+
+    expect(result.config).toHaveLength(2)
+    expect(result.config.map(f => f.name)).toEqual(['TOOLS.md', 'HEARTBEAT.md'])
+
+    expect(result.docs).toHaveLength(1)
+    expect(result.docs[0].name).toBe('RandomDoc.md')
   })
 })
 

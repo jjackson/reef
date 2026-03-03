@@ -50,6 +50,8 @@ interface InsightsInstance {
   memories: InsightsKnowledgeFile[]
   skills: InsightsKnowledgeFile[]
   identity: InsightsKnowledgeFile[]
+  config?: InsightsKnowledgeFile[]
+  docs?: InsightsKnowledgeFile[]
 }
 
 interface InsightsData {
@@ -407,7 +409,7 @@ export function HomePanel() {
                         {inst.skills.length} skills, {inst.memories.length} memories
                       </span>
                     </div>
-                    {(inst.skills.length > 0 || inst.memories.length > 0 || inst.identity.length > 0) && (
+                    {(inst.skills.length > 0 || inst.memories.length > 0 || inst.identity.length > 0 || (inst.config || []).length > 0 || (inst.docs || []).length > 0) && (
                       <div className="px-4 py-3 space-y-3">
                         {inst.skills.length > 0 && (
                           <div>
@@ -439,9 +441,29 @@ export function HomePanel() {
                             </div>
                           </div>
                         )}
+                        {(inst.config || []).length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Config</h4>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(inst.config || []).map(f => (
+                                <span key={f.name} className="inline-block px-2.5 py-1 rounded-md bg-slate-100 text-xs text-slate-600 font-mono">{f.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {(inst.docs || []).length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Docs</h4>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(inst.docs || []).map(f => (
+                                <span key={f.name} className="inline-block px-2.5 py-1 rounded-md bg-gray-50 text-xs text-gray-500 font-mono border border-gray-200">{f.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
-                    {inst.skills.length === 0 && inst.memories.length === 0 && inst.identity.length === 0 && (
+                    {inst.skills.length === 0 && inst.memories.length === 0 && inst.identity.length === 0 && (inst.config || []).length === 0 && (inst.docs || []).length === 0 && (
                       <div className="px-4 py-3 text-xs text-gray-400 italic">No knowledge files found</div>
                     )}
                   </div>
