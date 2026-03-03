@@ -2,6 +2,13 @@
 
 import { useState } from 'react'
 import { useDashboard } from './context/DashboardContext'
+
+function openInsightsReport(workspaceId: string | null) {
+  const url = workspaceId
+    ? `/api/fleet/insights/report?workspace=${encodeURIComponent(workspaceId)}`
+    : '/api/fleet/insights/report'
+  window.open(url, '_blank')
+}
 import { CreateMachineDialog } from './CreateMachineDialog'
 
 interface FleetAgentRow {
@@ -32,6 +39,26 @@ interface FleetData {
   instances: FleetInstanceInfo[]
 }
 
+interface InsightsKnowledgeFile {
+  name: string
+  content: string
+  lastModified: string
+}
+
+interface InsightsInstance {
+  instance: string
+  memories: InsightsKnowledgeFile[]
+  skills: InsightsKnowledgeFile[]
+  identity: InsightsKnowledgeFile[]
+}
+
+interface InsightsData {
+  instances: InsightsInstance[]
+  skillIndex: Record<string, string[]>
+  totalMemories: number
+  totalSkills: number
+}
+
 function StatusDot({ status, title }: { status: 'ok' | 'warn' | 'error' | 'off'; title: string }) {
   const colors = {
     ok: 'bg-green-400',
@@ -48,11 +75,14 @@ function StatusDot({ status, title }: { status: 'ok' | 'warn' | 'error' | 'off';
 }
 
 export function HomePanel() {
-  const { accounts, instances, setInstances } = useDashboard()
+  const { accounts, instances, setInstances, activeWorkspaceId } = useDashboard()
   const [showCreate, setShowCreate] = useState(false)
   const [fleetData, setFleetData] = useState<FleetData | null>(null)
   const [fleetLoading, setFleetLoading] = useState(false)
   const [fleetError, setFleetError] = useState<string | null>(null)
+  const [insightsData, setInsightsData] = useState<InsightsData | null>(null)
+  const [insightsLoading, setInsightsLoading] = useState(false)
+  const [insightsError, setInsightsError] = useState<string | null>(null)
 
   async function refreshInstances() {
     try {
@@ -81,6 +111,23 @@ export function HomePanel() {
       setFleetError(err instanceof Error ? err.message : 'Failed to fetch fleet overview')
     } finally {
       setFleetLoading(false)
+    }
+  }
+
+  async function fetchInsights() {
+    setInsightsLoading(true)
+    setInsightsError(null)
+    try {
+      const res = await fetch('/api/fleet/insights')
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || `HTTP ${res.status}`)
+      }
+      setInsightsData(await res.json())
+    } catch (err) {
+      setInsightsError(err instanceof Error ? err.message : 'Failed to fetch fleet insights')
+    } finally {
+      setInsightsLoading(false)
     }
   }
 
@@ -140,6 +187,26 @@ export function HomePanel() {
             ) : (
               'Fleet Overview'
             )}
+          </button>
+          <button
+            onClick={fetchInsights}
+            disabled={insightsLoading}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {insightsLoading ? (
+              <>
+                <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Scanning...
+              </>
+            ) : (
+              'Fleet Insights'
+            )}
+          </button>
+          <button
+            onClick={() => openInsightsReport(activeWorkspaceId)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border-2 border-indigo-300 text-indigo-700 text-sm font-medium hover:bg-indigo-50 transition-colors"
+          >
+            Open Report
           </button>
         </div>
 
@@ -282,6 +349,103 @@ export function HomePanel() {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Fleet Insights */}
+        {insightsError && (
+          <div className="mb-8 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            {insightsError}
+          </div>
+        )}
+
+        {insightsData && (
+          <>
+            <div className="mb-6">
+              <div className="flex items-baseline gap-4 mb-3">
+                <h2 className="text-sm font-semibold text-gray-700">Fleet Knowledge</h2>
+                <span className="text-xs text-gray-400">
+                  {insightsData.totalSkills} skills, {insightsData.totalMemories} memories across {insightsData.instances.length} instances
+                </span>
+              </div>
+
+              {/* Skill Index */}
+              {Object.keys(insightsData.skillIndex).length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-200 mb-4 overflow-hidden">
+                  <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Skill Distribution</h3>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {Object.entries(insightsData.skillIndex)
+                      .sort(([, a], [, b]) => b.length - a.length)
+                      .map(([skill, instanceIds]) => (
+                        <div key={skill} className="px-4 py-2.5 flex items-center justify-between">
+                          <span className="text-sm font-mono text-gray-700">{skill}</span>
+                          <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap gap-1">
+                              {instanceIds.map(id => (
+                                <span key={id} className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 text-xs text-indigo-700">{id}</span>
+                              ))}
+                            </div>
+                            <span className="text-xs text-gray-400">{instanceIds.length} instance{instanceIds.length !== 1 ? 's' : ''}</span>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Per-Instance Knowledge */}
+              <div className="space-y-3">
+                {insightsData.instances.map(inst => (
+                  <div key={inst.instance} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-800 font-mono">{inst.instance}</span>
+                      <span className="text-xs text-gray-400">
+                        {inst.skills.length} skills, {inst.memories.length} memories
+                      </span>
+                    </div>
+                    {(inst.skills.length > 0 || inst.memories.length > 0 || inst.identity.length > 0) && (
+                      <div className="px-4 py-3 space-y-3">
+                        {inst.skills.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Skills</h4>
+                            <div className="flex flex-wrap gap-1.5">
+                              {inst.skills.map(s => (
+                                <span key={s.name} className="inline-block px-2.5 py-1 rounded-md bg-indigo-50 text-xs text-indigo-700 font-mono">{s.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {inst.memories.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Memories</h4>
+                            <div className="flex flex-wrap gap-1.5">
+                              {inst.memories.map(m => (
+                                <span key={m.name} className="inline-block px-2.5 py-1 rounded-md bg-amber-50 text-xs text-amber-700 font-mono">{m.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {inst.identity.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Identity</h4>
+                            <div className="flex flex-wrap gap-1.5">
+                              {inst.identity.map(f => (
+                                <span key={f.name} className="inline-block px-2.5 py-1 rounded-md bg-emerald-50 text-xs text-emerald-700 font-mono">{f.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {inst.skills.length === 0 && inst.memories.length === 0 && inst.identity.length === 0 && (
+                      <div className="px-4 py-3 text-xs text-gray-400 italic">No knowledge files found</div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </>

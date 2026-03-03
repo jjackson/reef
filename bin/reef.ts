@@ -361,6 +361,76 @@ async function main() {
       break
     }
 
+    case 'insights': {
+      const { getInstanceKnowledge, getFleetKnowledge, findSkill } = await import('../lib/insights')
+
+      const skillIdx = args.indexOf('--skill')
+      const skillName = skillIdx >= 0 ? args[skillIdx + 1] : undefined
+
+      const wsIdx = args.indexOf('--workspace')
+      const workspace = wsIdx >= 0 ? args[wsIdx + 1] : undefined
+
+      // reef insights --skill <name>
+      if (skillName) {
+        const matches = await findSkill(skillName)
+        console.log(JSON.stringify({
+          success: true,
+          skill: skillName,
+          instances: matches.map(m => ({
+            instance: m.instance,
+            skillContent: m.skills.find(s => s.name === skillName)?.content ?? '',
+          })),
+        }))
+        break
+      }
+
+      // reef insights <instance>
+      const instanceId = args[0]
+      if (instanceId && !instanceId.startsWith('--')) {
+        const instance = await requireInstance(instanceId)
+        const knowledge = await getInstanceKnowledge(
+          sshConfig(instance), instanceId
+        )
+        console.log(JSON.stringify({ success: true, ...knowledge }))
+        break
+      }
+
+      // reef insights [--workspace <id>]
+      const fleet = await getFleetKnowledge(workspace)
+      console.log(JSON.stringify({ success: true, ...fleet }))
+      break
+    }
+
+    case 'report': {
+      const { getFleetKnowledge } = await import('../lib/insights')
+      const { loadSettings } = await import('../lib/settings')
+      const { generateFleetReport } = await import('../lib/report-html')
+      const { writeFileSync } = await import('fs')
+      const { tmpdir } = await import('os')
+
+      const wsIdx = args.indexOf('--workspace')
+      const workspace = wsIdx >= 0 ? args[wsIdx + 1] : undefined
+
+      const fleet = await getFleetKnowledge(workspace)
+      let workspaceLabel: string | undefined
+      if (workspace) {
+        const settings = loadSettings()
+        workspaceLabel = settings.workspaces[workspace]?.label
+      }
+
+      const html = generateFleetReport(fleet, workspaceLabel)
+      const outPath = args.find(a => !a.startsWith('--') && a !== workspace)
+        || join(tmpdir(), 'reef-fleet-report.html')
+      writeFileSync(outPath, html)
+
+      // Open in browser
+      const open = process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open'
+      try { execSync(`${open} "${outPath}"`) } catch {}
+
+      console.log(JSON.stringify({ success: true, path: outPath, instances: fleet.instances.length, skills: fleet.totalSkills, memories: fleet.totalMemories }))
+      break
+    }
+
     case 'help': {
       const commands = [
         'Instance commands:',
@@ -408,6 +478,12 @@ async function main() {
         '  workspace create <id> [--label <lbl>]  Create a new workspace',
         '  workspace move <instance> <workspace>  Move instance to workspace',
         '  workspace delete <id>                  Delete workspace (moves instances to default)',
+        '',
+        'Insights:',
+        '  insights [instance]                    Fleet-wide or per-instance knowledge inventory',
+        '    --skill <name>                       Find which instances have a specific skill',
+        '    --workspace <id>                     Filter by workspace',
+        '  report [path] [--workspace <id>]       Generate HTML fleet report and open in browser',
       ]
       console.log(commands.join('\n'))
       break

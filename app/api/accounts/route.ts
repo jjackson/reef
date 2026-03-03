@@ -4,7 +4,7 @@ import { getAccounts } from '@/lib/settings'
 export async function GET() {
   try {
     const accounts = getAccounts()
-    return NextResponse.json({ accounts: accounts.map(a => ({ id: a.id, label: a.label })) })
+    return NextResponse.json({ accounts: accounts.map(a => ({ id: a.id, label: a.label, provider: a.provider })) })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },

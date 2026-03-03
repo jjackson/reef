@@ -35,7 +35,7 @@ export default function DashboardPage() {
 
         // Set each account's instances
         for (const acct of accountsData.accounts) {
-          setAccountInstances(acct.id, acct.label, grouped.get(acct.id) || [])
+          setAccountInstances(acct.id, acct.label, grouped.get(acct.id) || [], acct.provider)
         }
 
         // Handle instances with no matching account (legacy/default)

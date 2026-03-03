@@ -137,12 +137,15 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
 }
 
 export function Sidebar() {
-  const { instances, workspaces, activeWorkspaceId, setActiveWorkspace, checkedAgents, toggleAll, goHome } = useDashboard()
+  const { instances, accounts, workspaces, activeWorkspaceId, setActiveWorkspace, checkedAgents, toggleAll, goHome } = useDashboard()
   const [treeCollapsed, setTreeCollapsed] = useState(false)
 
   // Determine which instances to show: active workspace's instances, or all if no workspaces
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
   const visibleInstances = activeWorkspace ? activeWorkspace.instances : instances
+
+  // Derive provider(s) for the active workspace from account data
+  const providers = [...new Set(accounts.map(a => a.provider).filter(Boolean))]
 
   const allAgents = visibleInstances.flatMap(i => i.agents.map(a => `${i.id}:${a.id}`))
   const allChecked = allAgents.length > 0 && allAgents.every(k => checkedAgents.has(k))
@@ -153,17 +156,30 @@ export function Sidebar() {
         <h1 className="text-lg font-bold text-gray-900">reef</h1>
         <p className="text-xs text-gray-500">OpenClaw management</p>
       </button>
-      {workspaces.length > 1 && (
+      {workspaces.length > 0 && (
         <div className="px-2 py-1.5 border-b border-gray-100">
-          <select
-            value={activeWorkspaceId || ''}
-            onChange={e => setActiveWorkspace(e.target.value)}
-            className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 text-gray-700"
-          >
-            {workspaces.map(ws => (
-              <option key={ws.id} value={ws.id}>{ws.label} ({ws.instances.length})</option>
-            ))}
-          </select>
+          {workspaces.length > 1 ? (
+            <select
+              value={activeWorkspaceId || ''}
+              onChange={e => setActiveWorkspace(e.target.value)}
+              className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 text-gray-700"
+            >
+              {workspaces.map(ws => (
+                <option key={ws.id} value={ws.id}>{ws.label} ({ws.instances.length})</option>
+              ))}
+            </select>
+          ) : (
+            <div className="px-2 py-0.5">
+              <div className="text-xs font-medium text-gray-700">
+                {activeWorkspace?.label || workspaces[0]?.label || 'Default'} <span className="text-gray-400 font-normal">({visibleInstances.length})</span>
+              </div>
+            </div>
+          )}
+          {providers.length > 0 && (
+            <div className="px-2 py-0.5">
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">{providers.join(', ')}</span>
+            </div>
+          )}
         </div>
       )}
       <div className="px-2 py-1 border-b border-gray-100 flex items-center justify-between">

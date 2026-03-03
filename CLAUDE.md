@@ -19,7 +19,7 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances across c
 ## File layout
 
 - `lib/providers/` — cloud provider abstraction: `types.ts` (CloudProvider interface), `digitalocean.ts` (DO adapter), `index.ts` (factory)
-- `lib/` — core modules: `mapping.ts`, `instances.ts`, `workspaces.ts`, `1password.ts`, `ssh.ts`, `openclaw.ts`, `settings.ts`
+- `lib/` — core modules: `mapping.ts`, `instances.ts`, `workspaces.ts`, `1password.ts`, `ssh.ts`, `openclaw.ts`, `settings.ts`, `insights.ts`
 - `app/` — Next.js App Router pages and components
 - `app/api/instances/` — 7 API routes (list, health, check, backup, agents, browse, chat)
 - `app/api/workspaces/` — workspace CRUD API routes
@@ -28,7 +28,7 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances across c
 
 ## Testing
 
-- Vitest with 51 meaningful tests across 7 files
+- Vitest with 57 meaningful tests across 8 files
 - Worktree paths excluded in `vitest.config.ts`
 - Tests that only verify mocks return mock values were intentionally pruned
 
@@ -120,9 +120,35 @@ Reef includes a CLI tool for managing OpenClaw instances from the terminal. All 
 - `reef workspace move <instance> <workspace>` — move instance to workspace
 - `reef workspace delete <id>` — delete workspace (moves instances to default)
 
+**Insights commands:**
+- `reef insights [--workspace <id>]` — fleet-wide knowledge inventory (memories + skills across all agents)
+- `reef insights <instance> <agent>` — specific agent's memories and skills
+- `reef insights --skill <name>` — find which agents have a specific skill
+
 **Remote access:**
 - `reef ssh <instance> <command>` — run arbitrary SSH command
 - `reef ls <instance> <path>` — list remote directory contents
 - `reef cat <instance> <path>` — read remote file contents
 
 **Output contract:** Every command returns `{ "success": true|false, ... }`. Errors include an `"error"` field.
+
+## MCP Server
+
+Reef includes a read-only MCP server for conversational fleet access from Claude Code.
+
+**Setup:** Add to your Claude Code MCP config (`.claude/settings.json` or `claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "reef": {
+      "command": "npx",
+      "args": ["tsx", "bin/reef-mcp.ts"],
+      "cwd": "/path/to/reef"
+    }
+  }
+}
+```
+
+**Available tools:** `list_instances`, `list_agents`, `fleet_knowledge`, `agent_knowledge`, `find_skill`, `instance_health`, `agent_health`, `browse_files`, `read_file`
+
+All tools are read-only. Path-based tools (`browse_files`, `read_file`) are restricted to `~/.openclaw/` for security.
