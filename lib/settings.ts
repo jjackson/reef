@@ -1,5 +1,5 @@
-import { readFileSync, existsSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { readFileSync, existsSync, writeFileSync, renameSync, mkdirSync } from 'fs'
+import { join, dirname } from 'path'
 
 export interface AccountConfig {
   provider?: string
@@ -42,7 +42,8 @@ export function loadSettings(): Settings {
   try {
     const raw = JSON.parse(readFileSync(settingsPath, 'utf-8'))
     cached = { accounts: raw.accounts || {}, workspaces: raw.workspaces || {} }
-  } catch {
+  } catch (err) {
+    console.warn(`[reef] Failed to parse ${settingsPath}: ${err instanceof Error ? err.message : err}`)
     cached = { accounts: {}, workspaces: {} }
   }
   return cached
@@ -72,6 +73,14 @@ export function getGlobalNameMap(): Record<string, string> {
   return merged
 }
 
+/** Write JSON to file atomically: write to temp file, then rename over target. */
+function atomicWriteJson(filePath: string, data: unknown): void {
+  const tmpPath = filePath + '.tmp'
+  mkdirSync(dirname(filePath), { recursive: true })
+  writeFileSync(tmpPath, JSON.stringify(data, null, 2) + '\n')
+  renameSync(tmpPath, filePath)
+}
+
 export function addToNameMap(accountId: string, dropletName: string, botName: string): void {
   const settingsPath = join(process.cwd(), 'config', 'settings.json')
   const settings = loadSettings()
@@ -79,12 +88,12 @@ export function addToNameMap(accountId: string, dropletName: string, botName: st
     settings.accounts[accountId] = { tokenRef: '', nameMap: {} }
   }
   settings.accounts[accountId].nameMap[dropletName] = botName
-  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n')
+  atomicWriteJson(settingsPath, settings)
   cached = settings
 }
 
 export function writeSettings(settings: Settings): void {
   const settingsPath = join(process.cwd(), 'config', 'settings.json')
-  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n')
+  atomicWriteJson(settingsPath, settings)
   cached = settings
 }
