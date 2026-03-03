@@ -427,9 +427,9 @@ async function main() {
         || join(tmpdir(), 'reef-fleet-report.html')
       writeFileSync(outPath, html)
 
-      // Open in browser
-      const open = process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open'
-      try { execSync(`${open} "${outPath}"`) } catch {}
+      // Open in browser (Windows `start` needs empty title before quoted path)
+      const openCmd = process.platform === 'win32' ? `start "" "${outPath}"` : `${process.platform === 'darwin' ? 'open' : 'xdg-open'} "${outPath}"`
+      try { execSync(openCmd) } catch {}
 
       console.log(JSON.stringify({ success: true, path: outPath, instances: fleet.instances.length, skills: fleet.totalSkills, memories: fleet.totalMemories }))
       break
