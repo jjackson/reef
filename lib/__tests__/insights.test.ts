@@ -21,7 +21,7 @@ vi.mock('../settings', () => ({
   resetSettingsCache: vi.fn(),
 }))
 
-import { getInstanceKnowledge, getAgentKnowledge, getFleetKnowledge, findSkill } from '../insights'
+import { getInstanceKnowledge, getFleetKnowledge, findSkill } from '../insights'
 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
@@ -102,21 +102,6 @@ describe('getInstanceKnowledge', () => {
     const result = await getInstanceKnowledge(config, 'openclaw-empty')
 
     expect(result.instance).toBe('openclaw-empty')
-    expect(result.memories).toEqual([])
-    expect(result.skills).toEqual([])
-    expect(result.identity).toEqual([])
-  })
-})
-
-describe('getAgentKnowledge backward compat', () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it('delegates to getInstanceKnowledge', async () => {
-    mockRunCommand.mockResolvedValue({ stdout: '', stderr: '', code: 0 })
-
-    const result = await getAgentKnowledge(config, 'agent-id', 'Agent Name', '🤖', 'openclaw-hal')
-
-    expect(result.instance).toBe('openclaw-hal')
     expect(result.memories).toEqual([])
     expect(result.skills).toEqual([])
     expect(result.identity).toEqual([])

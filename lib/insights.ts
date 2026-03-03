@@ -16,9 +16,6 @@ export interface InstanceKnowledge {
   identity: KnowledgeFile[]  // SOUL.md, IDENTITY.md, USER.md, etc.
 }
 
-// Backward compat alias
-export type AgentKnowledge = InstanceKnowledge
-
 export interface FleetKnowledge {
   instances: InstanceKnowledge[]
   skillIndex: Record<string, string[]>  // skill dir name -> instance IDs that have it
@@ -113,17 +110,6 @@ export async function getInstanceKnowledge(
     skills,
     identity,
   }
-}
-
-// Backward compat: getAgentKnowledge delegates to getInstanceKnowledge
-export async function getAgentKnowledge(
-  config: SshConfig,
-  _agentId: string,
-  _agentName?: string,
-  _agentEmoji?: string,
-  instance?: string
-): Promise<AgentKnowledge> {
-  return getInstanceKnowledge(config, instance ?? '')
 }
 
 /**

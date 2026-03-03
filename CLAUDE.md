@@ -2,7 +2,7 @@
 
 ## Project
 
-Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances across cloud providers (currently Digital Ocean, with AWS planned).
+Reef is a Next.js 16 dashboard for managing OpenClaw AI agent instances across cloud providers (currently Digital Ocean, with AWS planned).
 
 ## Key architecture decisions
 
@@ -21,7 +21,8 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances across c
 - `lib/providers/` — cloud provider abstraction: `types.ts` (CloudProvider interface), `digitalocean.ts` (DO adapter), `index.ts` (factory)
 - `lib/` — core modules: `mapping.ts`, `instances.ts`, `workspaces.ts`, `1password.ts`, `ssh.ts`, `openclaw.ts`, `settings.ts`, `insights.ts`
 - `app/` — Next.js App Router pages and components
-- `app/api/instances/` — 7 API routes (list, health, check, backup, agents, browse, chat)
+- `app/api/instances/` — instance list route + 16 per-instance routes under `[id]/` (agents, backup, browse, channels, check, doctor, email-setup, google-setup, health, info, install, pairing, reboot, restart, terminal, upgrade)
+- `app/api/fleet/` — fleet overview and insights routes (including HTML report)
 - `app/api/workspaces/` — workspace CRUD API routes
 - `config/settings.json` — gitignored, maps accounts to provider/token refs, name maps, and workspaces
 - `.env.local` — gitignored, holds `DO_API_TOKEN` and `OP_SERVICE_ACCOUNT_TOKEN`
@@ -38,7 +39,7 @@ Reef is a Next.js 15 dashboard for managing OpenClaw AI agent instances across c
 - Use `bash bin/dev_win.sh` on Windows native, `bash bin/dev_wsl.sh` on WSL — both kill the old server, clear `.next/` cache, bump patch version, and start fresh
 - **Do NOT background the dev script** (no `&` or `run_in_background`) — the script uses `exec` to replace itself with the node process, which breaks when backgrounded with output redirection. Run it in a foreground shell or a dedicated background task without redirection.
 - Never assume hot reload works. Every change requires a restart.
-- `next.config.ts` has `serverExternalPackages: ['ssh2', '@1password/sdk']` for native module compat
+- `next.config.ts` has `serverExternalPackages: ['ssh2', '@1password/sdk', 'ws']` for native module compat
 
 ## Gotchas
 
@@ -109,21 +110,26 @@ Reef includes a CLI tool for managing OpenClaw instances from the terminal. All 
 - `reef approve-pairing <instance> <channel> <code>` — approve a user's pairing code
 - `reef pairing-requests <instance> <channel>` — list pending pairing requests
 
-**Backup & deploy:**
-- `reef backup <instance> <agent>` — download agent tarball to `./backups/`
-- `reef check-backup <tarball>` — verify tarball integrity
-- `reef deploy <instance> <agent> <tarball>` — push, untar, run doctor
-
 **Workspace commands:**
 - `reef workspaces` — list all workspaces
 - `reef workspace create <id> [--label <label>]` — create a new workspace
 - `reef workspace move <instance> <workspace>` — move instance to workspace
 - `reef workspace delete <id>` — delete workspace (moves instances to default)
 
+**Config commands:**
+- `reef set-key <instance> <key> [--agent <agent>] [--provider <provider>] [--restart]` — set API key
+
 **Insights commands:**
-- `reef insights [--workspace <id>]` — fleet-wide knowledge inventory (memories + skills across all agents)
-- `reef insights <instance> <agent>` — specific agent's memories and skills
-- `reef insights --skill <name>` — find which agents have a specific skill
+- `reef insights [--workspace <id>]` — fleet-wide knowledge inventory (memories, skills, identity across all instances)
+- `reef insights <instance>` — specific instance's memories, skills, and identity files
+- `reef insights --skill <name>` — find which instances have a specific skill
+- `reef report [path] [--workspace <id>]` — generate HTML fleet report and open in browser
+
+**Backup & deploy:**
+- `reef extract <instance>` — extract all agents + config for rebuild
+- `reef backup <instance> <agent>` — download agent tarball to `./backups/`
+- `reef check-backup <tarball>` — verify tarball integrity
+- `reef deploy <instance> <agent> <tarball>` — push, untar, run doctor
 
 **Remote access:**
 - `reef ssh <instance> <command>` — run arbitrary SSH command
@@ -149,6 +155,6 @@ Reef includes a read-only MCP server for conversational fleet access from Claude
 }
 ```
 
-**Available tools:** `list_instances`, `list_agents`, `fleet_knowledge`, `agent_knowledge`, `find_skill`, `instance_health`, `agent_health`, `browse_files`, `read_file`
+**Available tools:** `list_instances`, `list_agents`, `fleet_knowledge`, `instance_knowledge`, `find_skill`, `instance_health`, `agent_health`, `browse_files`, `read_file`
 
 All tools are read-only. Path-based tools (`browse_files`, `read_file`) are restricted to `~/.openclaw/` for security.

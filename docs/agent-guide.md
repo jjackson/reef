@@ -36,7 +36,17 @@ reef <command>
 | `reef ls <inst> <path>` | List directory |
 | `reef cat <inst> <path>` | Read file |
 | `reef backup <inst> <agent>` | Backup agent |
+| `reef extract <inst>` | Extract all agents + config |
 | `reef deploy <inst> <agent> <tar>` | Deploy agent |
+| `reef set-key <inst> <key> [opts]` | Set API key |
+| `reef workspaces` | List workspaces |
+| `reef workspace create <id>` | Create workspace |
+| `reef workspace move <inst> <ws>` | Move instance |
+| `reef workspace delete <id>` | Delete workspace |
+| `reef insights [--workspace <id>]` | Fleet knowledge inventory |
+| `reef insights <inst>` | Instance knowledge |
+| `reef insights --skill <name>` | Find skill across fleet |
+| `reef report [path]` | Generate HTML report |
 
 ## Instance IDs
 
@@ -186,6 +196,31 @@ reef check-backup ./backups/openclaw-hal-main-2026-02-23T...tar.gz
 reef deploy openclaw-dot main ./backups/openclaw-hal-main-2026-02-23T...tar.gz
 ```
 
+### Fleet Insights & Knowledge
+
+```bash
+# Fleet-wide knowledge inventory (all instances)
+reef insights
+# → { "success": true, "instances": [...], "skillIndex": {...}, "totalMemories": 25, "totalSkills": 8 }
+
+# Filter by workspace
+reef insights --workspace default
+
+# Single instance knowledge
+reef insights openclaw-hal
+# → { "success": true, "instance": "openclaw-hal", "memories": [...], "skills": [...], "identity": [...] }
+
+# Find which instances have a specific skill
+reef insights --skill coding
+# → { "success": true, "skill": "coding", "instances": [{ "instance": "openclaw-hal", "skillContent": "..." }] }
+
+# Generate HTML report (opens in browser)
+reef report
+reef report ./my-report.html --workspace default
+```
+
+**If insights returns empty results:** Instances must be reachable via SSH. Check `reef health <instance>` first. Knowledge lives at `~/.openclaw/workspace/` — memories in `memory/`, skills in `skills/`, identity files (SOUL.md, etc.) in the workspace root.
+
 ## Output Contract
 
 Every command returns JSON with at minimum:
@@ -214,6 +249,13 @@ Common fields by command:
 | `ssh` | `stdout`, `stderr`, `exitCode` |
 | `ls` | `entries[]` with `name`, `type` |
 | `cat` | `content` |
+| `set-key` | `success`, `output` |
+| `extract` | `success`, `agents[]`, `configs[]` |
+| `workspaces` | `workspaces[]` with `id`, `label`, `instances[]` |
+| `insights` (fleet) | `instances[]`, `skillIndex`, `totalMemories`, `totalSkills` |
+| `insights` (instance) | `instance`, `memories[]`, `skills[]`, `identity[]` |
+| `insights --skill` | `skill`, `instances[]` with `instance`, `skillContent` |
+| `report` | `path`, `instances`, `skills`, `memories` |
 
 ## Decision Trees
 

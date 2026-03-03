@@ -3,7 +3,7 @@
  * Reef MCP Server — read-only fleet access for Claude Code.
  *
  * Exposes 9 tools for conversational fleet introspection:
- *   list_instances, list_agents, fleet_knowledge, agent_knowledge,
+ *   list_instances, list_agents, fleet_knowledge, instance_knowledge,
  *   find_skill, instance_health, agent_health, browse_files, read_file
  *
  * Usage:
