@@ -118,6 +118,7 @@ Reef includes a CLI tool for managing OpenClaw instances from the terminal. All 
 
 **Config commands:**
 - `reef set-key <instance> <key> [--agent <agent>] [--provider <provider>] [--restart]` — set API key
+- `reef rotate-key <instance> <key>` — push Anthropic key to all agents, restart gateway, save to 1Password
 
 **Insights commands:**
 - `reef insights [--workspace <id>]` — fleet-wide knowledge inventory (memories, skills, identity across all instances)
