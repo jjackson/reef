@@ -1,6 +1,7 @@
 import { runCommand } from './ssh'
 import type { SshConfig } from './ssh'
-import { listInstances, resolveInstance } from './instances'
+import { listInstances, resolveSSHKey } from './instances'
+import type { Instance } from './instances'
 import { loadSettings } from './settings'
 
 export interface KnowledgeFile {
@@ -82,40 +83,9 @@ function parseBatchOutput(stdout: string): KnowledgeFile[] {
 }
 
 /**
- * Read all .md files from a directory in a single SSH command.
- */
-async function readFiles(
-  config: SshConfig,
-  dirPath: string
-): Promise<KnowledgeFile[]> {
-  const { stdout } = await runCommand(
-    config,
-    `for f in "${dirPath}"/*.md; do [ -f "$f" ] || continue; echo "___FILE___$(basename "$f")"; cat "$f"; echo "___REEF_SEP___"; stat -c '%Y' "$f"; echo "___END___"; done`
-  )
-
-  return parseBatchOutput(stdout)
-}
-
-/**
- * Read skill directories in a single SSH command.
- * Each skill is a directory with a SKILL.md file.
- */
-async function readSkills(
-  config: SshConfig,
-  skillsDir: string
-): Promise<KnowledgeFile[]> {
-  const { stdout } = await runCommand(
-    config,
-    `for d in "${skillsDir}"/*/; do [ -d "$d" ] || continue; name=$(basename "$d"); f="$d/SKILL.md"; [ -f "$f" ] || continue; echo "___FILE___$name"; cat "$f"; echo "___REEF_SEP___"; stat -c '%Y' "$f"; echo "___END___"; done`
-  )
-
-  return parseBatchOutput(stdout)
-}
-
-/**
- * SSH into an instance and retrieve its knowledge from ~/.openclaw/workspace/.
- * Knowledge lives at the instance level, not per-agent.
- * Calls are sequential to avoid overwhelming SSH with parallel connections.
+ * SSH into an instance and retrieve all knowledge in a single SSH command.
+ * Reads memory, skills, and workspace root .md files in one session
+ * using section markers to separate the three categories.
  */
 export async function getInstanceKnowledge(
   config: SshConfig,
@@ -123,9 +93,31 @@ export async function getInstanceKnowledge(
 ): Promise<InstanceKnowledge> {
   const ws = '$HOME/.openclaw/workspace'
 
-  const memories = await readFiles(config, `${ws}/memory`)
-  const skills = await readSkills(config, `${ws}/skills`)
-  const wsFiles = await readFiles(config, ws)
+  // Single batched SSH command: reads all three directories with section separators
+  const { stdout } = await runCommand(
+    config,
+    [
+      'echo "___SECTION___MEMORY"',
+      `for f in "${ws}/memory"/*.md; do [ -f "$f" ] || continue; echo "___FILE___$(basename "$f")"; cat "$f"; echo "___REEF_SEP___"; stat -c '%Y' "$f"; echo "___END___"; done`,
+      'echo "___SECTION___SKILLS"',
+      `for d in "${ws}/skills"/*/; do [ -d "$d" ] || continue; name=$(basename "$d"); f="$d/SKILL.md"; [ -f "$f" ] || continue; echo "___FILE___$name"; cat "$f"; echo "___REEF_SEP___"; stat -c '%Y' "$f"; echo "___END___"; done`,
+      'echo "___SECTION___WORKSPACE"',
+      `for f in "${ws}"/*.md; do [ -f "$f" ] || continue; echo "___FILE___$(basename "$f")"; cat "$f"; echo "___REEF_SEP___"; stat -c '%Y' "$f"; echo "___END___"; done`,
+    ].join('; ')
+  )
+
+  // Split output by section markers
+  const sections = stdout.split('___SECTION___')
+  let memoryOut = '', skillsOut = '', workspaceOut = ''
+  for (const section of sections) {
+    if (section.startsWith('MEMORY')) memoryOut = section.slice('MEMORY'.length)
+    else if (section.startsWith('SKILLS')) skillsOut = section.slice('SKILLS'.length)
+    else if (section.startsWith('WORKSPACE')) workspaceOut = section.slice('WORKSPACE'.length)
+  }
+
+  const memories = parseBatchOutput(memoryOut)
+  const skills = parseBatchOutput(skillsOut)
+  const wsFiles = parseBatchOutput(workspaceOut)
   const { identity, config: configFiles, docs } = classifyWorkspaceFiles(wsFiles)
 
   return {
@@ -140,6 +132,8 @@ export async function getInstanceKnowledge(
 
 /**
  * Gather knowledge across all instances in the fleet.
+ * Uses a single listInstances() call and caches SSH key resolution
+ * to avoid redundant DO API and 1Password round-trips.
  */
 export async function getFleetKnowledge(workspace?: string): Promise<FleetKnowledge> {
   let allInstances = await listInstances()
@@ -154,16 +148,21 @@ export async function getFleetKnowledge(workspace?: string): Promise<FleetKnowle
     allInstances = allInstances.filter((inst) => wsInstances.has(inst.id))
   }
 
+  // Resolve SSH keys once per unique ref, then share across instances
+  const keyCache = new Map<string, Promise<string>>()
+  function getCachedKey(ref: string): Promise<string> {
+    let p = keyCache.get(ref)
+    if (!p) {
+      p = resolveSSHKey(ref)
+      keyCache.set(ref, p)
+    }
+    return p
+  }
+
   const results = await Promise.allSettled(
     allInstances.map(async (inst) => {
-      const resolved = await resolveInstance(inst.id)
-      if (!resolved) return null
-
-      const sshConfig: SshConfig = {
-        host: resolved.ip,
-        privateKey: resolved.sshKey,
-      }
-
+      const sshKey = await getCachedKey(inst.sshKeyRef)
+      const sshConfig: SshConfig = { host: inst.ip, privateKey: sshKey }
       return getInstanceKnowledge(sshConfig, inst.id)
     })
   )

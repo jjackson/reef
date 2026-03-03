@@ -21,7 +21,7 @@ export interface ResolvedInstance extends Instance {
   sshKey: string   // Actual private key value
 }
 
-async function resolveSSHKey(opRef: string): Promise<string> {
+export async function resolveSSHKey(opRef: string): Promise<string> {
   if (process.env.SSH_PRIVATE_KEY) {
     return process.env.SSH_PRIVATE_KEY
   }
