@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, writeFileSync, renameSync, mkdirSync } from 'fs'
+import { readFileSync, existsSync, writeFileSync, renameSync, mkdirSync, unlinkSync } from 'fs'
 import { join, dirname } from 'path'
 
 export interface AccountConfig {
@@ -73,12 +73,16 @@ export function getGlobalNameMap(): Record<string, string> {
   return merged
 }
 
-/** Write JSON to file atomically: write to temp file, then rename over target. */
+/** Write JSON to file atomically: write to unique temp file, then rename over target. */
 function atomicWriteJson(filePath: string, data: unknown): void {
-  const tmpPath = filePath + '.tmp'
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
   mkdirSync(dirname(filePath), { recursive: true })
-  writeFileSync(tmpPath, JSON.stringify(data, null, 2) + '\n')
-  renameSync(tmpPath, filePath)
+  try {
+    writeFileSync(tmpPath, JSON.stringify(data, null, 2) + '\n')
+    renameSync(tmpPath, filePath)
+  } finally {
+    if (existsSync(tmpPath)) unlinkSync(tmpPath)
+  }
 }
 
 export function addToNameMap(accountId: string, dropletName: string, botName: string): void {

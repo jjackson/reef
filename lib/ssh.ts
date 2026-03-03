@@ -19,9 +19,18 @@ const READY_TIMEOUT = 15_000
 /** Application-level timeout for non-streaming SSH operations (2 minutes) */
 const COMMAND_TIMEOUT = 120_000
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+  onTimeout?: () => void,
+): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`SSH timeout: ${label} after ${ms}ms`)), ms)
+    const timer = setTimeout(() => {
+      try { onTimeout?.() } finally {
+        reject(new Error(`SSH timeout: ${label} after ${ms}ms`))
+      }
+    }, ms)
     promise.then(
       (val) => { clearTimeout(timer); resolve(val) },
       (err) => { clearTimeout(timer); reject(err) },
@@ -37,9 +46,8 @@ export async function runCommand(
   config: SshConfig,
   command: string
 ): Promise<CommandResult> {
+  const conn = new Client()
   const inner = new Promise<CommandResult>((resolve, reject) => {
-    const conn = new Client()
-
     conn
       .on('ready', () => {
         conn.exec(command, (err, stream) => {
@@ -76,7 +84,7 @@ export async function runCommand(
         readyTimeout: READY_TIMEOUT,
       })
   })
-  return withTimeout(inner, COMMAND_TIMEOUT, `runCommand on ${config.host}`)
+  return withTimeout(inner, COMMAND_TIMEOUT, `runCommand on ${config.host}`, () => conn.end())
 }
 
 /**
@@ -87,9 +95,8 @@ export async function sftpPull(
   remotePath: string,
   localPath: string
 ): Promise<void> {
+  const conn = new Client()
   const inner = new Promise<void>((resolve, reject) => {
-    const conn = new Client()
-
     conn
       .on('ready', () => {
         conn.sftp((err, sftp) => {
@@ -116,7 +123,7 @@ export async function sftpPull(
         readyTimeout: READY_TIMEOUT,
       })
   })
-  return withTimeout(inner, COMMAND_TIMEOUT, `sftpPull on ${config.host}`)
+  return withTimeout(inner, COMMAND_TIMEOUT, `sftpPull on ${config.host}`, () => conn.end())
 }
 
 /**
@@ -204,9 +211,8 @@ export async function sftpPush(
   localPath: string,
   remotePath: string
 ): Promise<void> {
+  const conn = new Client()
   const inner = new Promise<void>((resolve, reject) => {
-    const conn = new Client()
-
     conn
       .on('ready', () => {
         conn.sftp((err, sftp) => {
@@ -233,5 +239,5 @@ export async function sftpPush(
         readyTimeout: READY_TIMEOUT,
       })
   })
-  return withTimeout(inner, COMMAND_TIMEOUT, `sftpPush on ${config.host}`)
+  return withTimeout(inner, COMMAND_TIMEOUT, `sftpPush on ${config.host}`, () => conn.end())
 }

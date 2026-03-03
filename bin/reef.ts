@@ -92,7 +92,11 @@ async function main() {
     case 'doctor': {
       const instance = await requireInstance(args[0])
       const result = await runDoctor(sshConfig(instance))
-      console.log(JSON.stringify({ success: result.exitCode === 0, ...result }))
+      console.log(JSON.stringify({
+        success: result.exitCode === 0,
+        ...result,
+        ...(result.exitCode !== 0 ? { error: result.output } : {}),
+      }))
       break
     }
 
