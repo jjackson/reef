@@ -9,17 +9,23 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;')
 }
 
+function truncateAtWord(text: string, max: number): string {
+  if (text.length <= max) return text
+  const cut = text.lastIndexOf(' ', max)
+  return (cut > 0 ? text.slice(0, cut) : text.slice(0, max)) + '...'
+}
+
 function extractSkillDescription(content: string): string {
   const lines = content.split('\n').slice(0, 10)
   for (const line of lines) {
     const match = line.match(/^description:\s*(.+)/i)
-    if (match) return match[1].trim().slice(0, 100)
+    if (match) return truncateAtWord(match[1].trim(), 100)
   }
-  // Fallback: first non-heading, non-empty line
+  // Fallback: first non-heading, non-empty, non-blockquote line
   for (const line of content.split('\n')) {
     const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    return trimmed.slice(0, 100)
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('>')) continue
+    return truncateAtWord(trimmed, 100)
   }
   return ''
 }
@@ -39,6 +45,9 @@ function renderMarkdownHtml(raw: string): string {
     // List items
     const li = line.match(/^[-*]\s+(.+)/)
     if (li) return `<div style="padding-left:1em;"><span style="color:var(--slate-400);">&bull;</span> ${inlineMarkdown(li[1])}</div>`
+    // Numbered list items
+    const nl = line.match(/^(\d+)\.\s+(.+)/)
+    if (nl) return `<div style="padding-left:1em;"><span style="color:var(--slate-400);">${escapeHtml(nl[1])}.</span> ${inlineMarkdown(nl[2])}</div>`
     // Normal text
     return `<div>${inlineMarkdown(line)}</div>`
   }).join('\n')
@@ -209,12 +218,6 @@ function getStyles(): string {
     }
     .narrative-item:last-child { border-bottom: none; }
 
-    .copy-cmd {
-      display: block; padding: 0.5rem 0.75rem; background: var(--slate-800);
-      color: var(--slate-200); border-radius: 0.375rem; font-size: 0.75rem;
-      overflow-x: auto; white-space: nowrap; margin-top: 0.25rem;
-    }
-
     .localhost-notice {
       background: var(--amber-50); border: 1px solid var(--amber-100);
       border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.75rem;
@@ -267,16 +270,15 @@ function renderSummaryCards(fleet: FleetKnowledge): string {
   const instanceCount = fleet.instances.length
   const skillNames = Object.keys(fleet.skillIndex)
   const withSkills = fleet.instances.filter(i => i.skills.length > 0).length
-  const coverage = instanceCount > 0 ? Math.round((withSkills / instanceCount) * 100) : 0
 
-  // Knowledge leader: instance with most skills + memories
-  let leader = ''
-  let leaderScore = 0
+  // Most active: instance with most skills + memories
+  let mostActive = ''
+  let mostActiveScore = 0
   for (const inst of fleet.instances) {
     const score = inst.skills.length + inst.memories.length
-    if (score > leaderScore) {
-      leaderScore = score
-      leader = inst.instance
+    if (score > mostActiveScore) {
+      mostActiveScore = score
+      mostActive = inst.instance
     }
   }
 
@@ -295,15 +297,15 @@ function renderSummaryCards(fleet: FleetKnowledge): string {
         <div class="label">Total Memories</div>
       </div>
       <div class="card emerald">
-        <div class="value">${coverage}%</div>
-        <div class="label">Skill Coverage</div>
-        <div class="card-detail">${withSkills} of ${instanceCount} instances</div>
+        <div class="value">${withSkills}</div>
+        <div class="label">With Skills</div>
+        <div class="card-detail">of ${instanceCount} instances</div>
       </div>
-      ${leader ? `
+      ${mostActive ? `
       <div class="card slate">
-        <div class="value mono" style="font-size:1rem;">${escapeHtml(leader)}</div>
-        <div class="label">Knowledge Leader</div>
-        <div class="card-detail">${leaderScore} files</div>
+        <div class="value mono" style="font-size:1rem;">${escapeHtml(mostActive)}</div>
+        <div class="label">Most Active</div>
+        <div class="card-detail">${mostActiveScore} files</div>
       </div>
       ` : ''}
     </div>
@@ -313,39 +315,37 @@ function renderSummaryCards(fleet: FleetKnowledge): string {
 function renderFleetNarrative(fleet: FleetKnowledge): string {
   const observations: string[] = []
 
-  // Knowledge leader
-  let leader = ''
-  let leaderScore = 0
+  // Most active instance
+  let mostActive = ''
+  let mostActiveScore = 0
   for (const inst of fleet.instances) {
     const score = inst.skills.length + inst.memories.length
-    if (score > leaderScore) {
-      leaderScore = score
-      leader = inst.instance
+    if (score > mostActiveScore) {
+      mostActiveScore = score
+      mostActive = inst.instance
     }
   }
-  if (leader) {
-    observations.push(`<strong>${escapeHtml(leader)}</strong> leads with ${leaderScore} knowledge files (skills + memories).`)
+  if (mostActive) {
+    observations.push(`<strong>${escapeHtml(mostActive)}</strong> is the most active with ${mostActiveScore} knowledge files.`)
   }
 
-  // Skill-less instances
-  const skillLess = fleet.instances.filter(i => i.skills.length === 0)
-  if (skillLess.length > 0) {
-    const names = skillLess.map(i => `<code>${escapeHtml(i.instance)}</code>`).join(', ')
-    observations.push(`${skillLess.length} instance${skillLess.length !== 1 ? 's have' : ' has'} no skills: ${names}. Consider transferring skills from peers.`)
-  }
-
-  // Most common skill
+  // Skill landscape
   const skillEntries = Object.entries(fleet.skillIndex).sort(([, a], [, b]) => b.length - a.length)
-  if (skillEntries.length > 0) {
-    const [topSkill, topOwners] = skillEntries[0]
-    observations.push(`Most common skill: <code>${escapeHtml(topSkill)}</code> (${topOwners.length} of ${fleet.instances.length} instances).`)
+  const shared = skillEntries.filter(([, owners]) => owners.length > 1)
+  if (shared.length > 0) {
+    const list = shared.map(([name, owners]) => `<code>${escapeHtml(name)}</code> (${owners.length} instances)`).join(', ')
+    observations.push(`Shared skills: ${list}.`)
   }
 
-  // Unique skills (only on one instance — transfer candidates)
-  const unique = skillEntries.filter(([, owners]) => owners.length === 1)
-  if (unique.length > 0) {
-    const list = unique.map(([name, owners]) => `<code>${escapeHtml(name)}</code> (${escapeHtml(owners[0])})`).join(', ')
-    observations.push(`Unique skills worth sharing: ${list}.`)
+  if (skillEntries.length > 0 && shared.length === 0) {
+    observations.push(`All ${skillEntries.length} skills are unique to a single instance — each agent is developing its own specializations.`)
+  }
+
+  // Instances still developing
+  const noSkills = fleet.instances.filter(i => i.skills.length === 0)
+  if (noSkills.length > 0 && noSkills.length < fleet.instances.length) {
+    const names = noSkills.map(i => `<code>${escapeHtml(i.instance)}</code>`).join(', ')
+    observations.push(`${noSkills.length} instance${noSkills.length !== 1 ? 's are' : ' is'} still developing: ${names}.`)
   }
 
   if (observations.length === 0) return ''
@@ -389,13 +389,11 @@ function renderSkillMatrix(fleet: FleetKnowledge): string {
 
   const rows = skills.map(([skillName, owners], idx) => {
     const desc = skillDescriptions.get(skillName) || ''
+    const ownerList = owners.map(o => escapeHtml(o)).join(', ')
     const cells = instanceIds.map(id => {
       const has = instanceSkillSets.get(id)?.has(skillName)
-      if (has) return '<td><span class="dot" title="Has skill"></span></td>'
-
-      const source = owners[0]
-      const cmd = `reef ssh ${source} "cat ~/.openclaw/workspace/skills/${skillName}/SKILL.md" | reef ssh ${id} "mkdir -p ~/.openclaw/workspace/skills/${skillName} && cat > ~/.openclaw/workspace/skills/${skillName}/SKILL.md"`
-      return `<td><span class="dot-empty" title="Missing — copy from ${escapeHtml(source)}&#10;${escapeHtml(cmd)}"></span></td>`
+      if (has) return `<td><span class="dot" title="${escapeHtml(id)} has this skill"></span></td>`
+      return '<td><span class="dot-empty"></span></td>'
     }).join('')
 
     const rowClass = idx % 2 === 1 ? ' class="alt-row"' : ''
@@ -404,7 +402,7 @@ function renderSkillMatrix(fleet: FleetKnowledge): string {
 
   return `
     <div class="section">
-      <div class="section-title">Skill Distribution Matrix</div>
+      <div class="section-title">Skill Landscape</div>
       <div style="overflow-x: auto;">
         <table class="matrix-table">
           <thead><tr><th class="skill-name">Skill</th><th class="skill-desc">Description</th>${headerCells}</tr></thead>
@@ -553,53 +551,6 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
   `
 }
 
-function renderDeploySection(fleet: FleetKnowledge): string {
-  const skills = Object.entries(fleet.skillIndex).sort(([, a], [, b]) => b.length - a.length)
-  const instanceIds = fleet.instances.map(i => i.instance)
-  const instanceSkillSets = new Map<string, Set<string>>()
-  for (const inst of fleet.instances) {
-    instanceSkillSets.set(inst.instance, new Set(inst.skills.map(s => s.name)))
-  }
-
-  // Group missing skills by target instance
-  const missingByInstance = new Map<string, { skill: string; source: string }[]>()
-  for (const [skillName, owners] of skills) {
-    for (const id of instanceIds) {
-      if (!instanceSkillSets.get(id)?.has(skillName)) {
-        if (!missingByInstance.has(id)) missingByInstance.set(id, [])
-        missingByInstance.get(id)!.push({ skill: skillName, source: owners[0] })
-      }
-    }
-  }
-
-  if (missingByInstance.size === 0) return ''
-
-  const blocks = Array.from(missingByInstance.entries()).map(([target, missing]) => {
-    const cmds = missing.map(({ skill, source }) => {
-      const cmd = `reef ssh ${source} "cat ~/.openclaw/workspace/skills/${skill}/SKILL.md" | reef ssh ${target} "mkdir -p ~/.openclaw/workspace/skills/${skill} && cat > ~/.openclaw/workspace/skills/${skill}/SKILL.md"`
-      return `<code class="copy-cmd">${escapeHtml(cmd)}</code>`
-    }).join('')
-    return `
-      <div style="margin-bottom:1rem;">
-        <div style="font-weight:600;font-size:0.8rem;margin-bottom:0.375rem;" class="mono">${escapeHtml(target)} <span style="color:var(--slate-400);font-weight:400;">(${missing.length} missing)</span></div>
-        ${cmds}
-      </div>
-    `
-  }).join('')
-
-  return `
-    <div class="section">
-      <details class="instance-card">
-        <summary>
-          <span class="instance-name">Deploy Missing Skills</span>
-          <span class="instance-meta">copy commands for skill gaps</span>
-        </summary>
-        <div class="instance-body">${blocks}</div>
-      </details>
-    </div>
-  `
-}
-
 function renderFooter(): string {
   const now = new Date().toISOString()
   return `
@@ -624,7 +575,6 @@ export function generateFleetReport(fleet: FleetKnowledge, workspaceLabel?: stri
   ${renderSummaryCards(fleet)}
   ${renderFleetNarrative(fleet)}
   ${renderSkillMatrix(fleet)}
-  ${renderDeploySection(fleet)}
   ${renderInstanceDetails(fleet)}
   ${renderFooter()}
 </body>
