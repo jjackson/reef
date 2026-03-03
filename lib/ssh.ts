@@ -13,6 +13,31 @@ export interface CommandResult {
   code: number
 }
 
+/** SSH connect timeout in ms (how long to wait for handshake) */
+const READY_TIMEOUT = 15_000
+
+/** Application-level timeout for non-streaming SSH operations (2 minutes) */
+const COMMAND_TIMEOUT = 120_000
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+  onTimeout?: () => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try { onTimeout?.() } finally {
+        reject(new Error(`SSH timeout: ${label} after ${ms}ms`))
+      }
+    }, ms)
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val) },
+      (err) => { clearTimeout(timer); reject(err) },
+    )
+  })
+}
+
 /**
  * Opens an SSH connection, runs a single command, closes the connection.
  * Per-request — no connection pooling needed at 0-10 instance scale.
@@ -21,9 +46,8 @@ export async function runCommand(
   config: SshConfig,
   command: string
 ): Promise<CommandResult> {
-  return new Promise((resolve, reject) => {
-    const conn = new Client()
-
+  const conn = new Client()
+  const inner = new Promise<CommandResult>((resolve, reject) => {
     conn
       .on('ready', () => {
         conn.exec(command, (err, stream) => {
@@ -48,14 +72,19 @@ export async function runCommand(
             })
         })
       })
-      .on('error', reject)
+      .on('error', (err) => {
+        conn.end()
+        reject(err)
+      })
       .connect({
         host: config.host,
         port: config.port ?? 22,
         username: config.username ?? 'root',
         privateKey: config.privateKey,
+        readyTimeout: READY_TIMEOUT,
       })
   })
+  return withTimeout(inner, COMMAND_TIMEOUT, `runCommand on ${config.host}`, () => conn.end())
 }
 
 /**
@@ -66,9 +95,8 @@ export async function sftpPull(
   remotePath: string,
   localPath: string
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const conn = new Client()
-
+  const conn = new Client()
+  const inner = new Promise<void>((resolve, reject) => {
     conn
       .on('ready', () => {
         conn.sftp((err, sftp) => {
@@ -83,14 +111,19 @@ export async function sftpPull(
           })
         })
       })
-      .on('error', reject)
+      .on('error', (err) => {
+        conn.end()
+        reject(err)
+      })
       .connect({
         host: config.host,
         port: config.port ?? 22,
         username: config.username ?? 'root',
         privateKey: config.privateKey,
+        readyTimeout: READY_TIMEOUT,
       })
   })
+  return withTimeout(inner, COMMAND_TIMEOUT, `sftpPull on ${config.host}`, () => conn.end())
 }
 
 /**
@@ -102,10 +135,15 @@ export async function backupDirectory(
   localTarPath: string
 ): Promise<void> {
   const tmpPath = '/tmp/reef-backup.tar.gz'
-  await runCommand(
+  const tarResult = await runCommand(
     config,
     `tar -czf ${tmpPath} -C $(dirname ${remoteDir}) $(basename ${remoteDir})`
   )
+  if (tarResult.code !== 0) {
+    // Clean up partial archive on remote
+    await runCommand(config, `rm -f ${tmpPath}`).catch(() => {})
+    throw new Error(`tar failed (exit ${tarResult.code}): ${tarResult.stderr.trim()}`)
+  }
   await sftpPull(config, tmpPath, localTarPath)
   await runCommand(config, `rm ${tmpPath}`)
 }
@@ -149,6 +187,7 @@ export function execStream(
         })
       })
       .on('error', (err) => {
+        conn.end()
         output.destroy(err)
         reject(err)
       })
@@ -157,6 +196,7 @@ export function execStream(
         port: config.port ?? 22,
         username: config.username ?? 'root',
         privateKey: config.privateKey,
+        readyTimeout: READY_TIMEOUT,
       })
   })
 
@@ -171,9 +211,8 @@ export async function sftpPush(
   localPath: string,
   remotePath: string
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const conn = new Client()
-
+  const conn = new Client()
+  const inner = new Promise<void>((resolve, reject) => {
     conn
       .on('ready', () => {
         conn.sftp((err, sftp) => {
@@ -188,12 +227,17 @@ export async function sftpPush(
           })
         })
       })
-      .on('error', reject)
+      .on('error', (err) => {
+        conn.end()
+        reject(err)
+      })
       .connect({
         host: config.host,
         port: config.port ?? 22,
         username: config.username ?? 'root',
         privateKey: config.privateKey,
+        readyTimeout: READY_TIMEOUT,
       })
   })
+  return withTimeout(inner, COMMAND_TIMEOUT, `sftpPush on ${config.host}`, () => conn.end())
 }

@@ -3,7 +3,7 @@
 Items closed or rejected during PM cycles. Read this before every scout run to avoid re-proposing.
 
 ## Closed Items
-(none yet)
+- **1Password singleton poisoning** (2026-03-03, trust-reliability): don't re-propose recovery logic for the 1Password client singleton
 
 ## Preferences
 - User pushes directly to main (solo developer, no PRs needed for small changes)
