@@ -1,4 +1,5 @@
 import { runCommand, SshConfig } from './ssh'
+import { saveApiKey } from './1password'
 
 export interface HealthResult {
   processRunning: boolean
@@ -706,6 +707,78 @@ export async function setApiKey(
   }
 
   return { success: true, output: `Set ${provider} API key for agent '${agentId}'` }
+}
+
+export interface RotateKeyResult {
+  success: boolean
+  agents: string[]
+  failedAgents: string[]
+  restarted: boolean
+  savedTo1Password: boolean
+  error?: string
+}
+
+/**
+ * Rotates an API key across all agents on a remote instance.
+ * 1. Discovers all agents via listAgents()
+ * 2. Sets the key on each agent via setApiKey()
+ * 3. Restarts the gateway
+ * 4. Saves the key to 1Password (non-fatal if unavailable)
+ *
+ * Partial agent failures are non-fatal: successfully updated agents are
+ * reported in `agents`, failed ones in `failedAgents`.
+ */
+export async function rotateKey(
+  config: SshConfig,
+  apiKey: string,
+  displayName: string
+): Promise<RotateKeyResult> {
+  // 1. Discover all agents
+  const agentList = await listAgents(config)
+  const agentIds = agentList.map(a => a.id)
+
+  // 2. Set key on each agent
+  const agents: string[] = []
+  const failedAgents: string[] = []
+  for (const id of agentIds) {
+    try {
+      const result = await setApiKey(config, id, apiKey)
+      if (result.success) {
+        agents.push(id)
+      } else {
+        failedAgents.push(id)
+      }
+    } catch {
+      failedAgents.push(id)
+    }
+  }
+
+  // 3. Restart gateway
+  let restarted = false
+  if (agents.length > 0) {
+    const restartResult = await runCommand(
+      config,
+      'systemctl --user restart openclaw-gateway 2>/dev/null || openclaw gateway restart 2>/dev/null || true'
+    )
+    restarted = restartResult.code === 0
+  }
+
+  // 4. Save to 1Password
+  let savedTo1Password = false
+  try {
+    await saveApiKey(displayName, apiKey)
+    savedTo1Password = true
+  } catch {
+    // Non-fatal — key is already on the instance
+  }
+
+  return {
+    success: agents.length > 0,
+    agents,
+    failedAgents,
+    restarted,
+    savedTo1Password,
+  }
 }
 
 export interface DeployResult {

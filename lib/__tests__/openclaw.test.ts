@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const { mockRunCommand } = vi.hoisted(() => ({
+const { mockRunCommand, mockSaveApiKey } = vi.hoisted(() => ({
   mockRunCommand: vi.fn(),
+  mockSaveApiKey: vi.fn(),
 }))
 vi.mock('../ssh', () => ({ runCommand: mockRunCommand }))
+vi.mock('../1password', () => ({ saveApiKey: mockSaveApiKey }))
 
-import { getHealth, listAgents, listDirectory, sendChatMessage, restartOpenClaw } from '../openclaw'
+import { getHealth, listAgents, listDirectory, sendChatMessage, restartOpenClaw, rotateKey } from '../openclaw'
 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
@@ -184,5 +186,95 @@ describe('restartOpenClaw', () => {
     const result = await restartOpenClaw(config)
     expect(result.success).toBe(false)
     expect(result.method).toBe('process-kill')
+  })
+})
+
+describe('rotateKey', () => {
+  beforeEach(() => {
+    mockRunCommand.mockReset()
+    mockSaveApiKey.mockReset()
+  })
+
+  it('sets key on all discovered agents, restarts, and saves to 1Password', async () => {
+    // listAgents: openclaw agents list --json
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify([
+        { id: 'main', identityName: 'Hal', identityEmoji: '', workspace: '', agentDir: '', model: '', isDefault: true },
+        { id: 'scout', identityName: 'Scout', identityEmoji: '', workspace: '', agentDir: '', model: '', isDefault: false },
+      ]),
+      stderr: '', code: 0,
+    })
+    // setApiKey for 'main': read existing + mkdir + write
+    mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })  // cat existing
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })     // mkdir
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })     // write
+    // setApiKey for 'scout': read existing + mkdir + write
+    mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })  // cat existing
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })     // mkdir
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })     // write
+    // restart gateway
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+
+    mockSaveApiKey.mockResolvedValue({ id: 'item-1', title: 'Hal - Anthropic API Key' })
+
+    const result = await rotateKey(config, 'sk-ant-key-123', 'Hal')
+
+    expect(result.success).toBe(true)
+    expect(result.agents).toEqual(['main', 'scout'])
+    expect(result.failedAgents).toEqual([])
+    expect(result.restarted).toBe(true)
+    expect(result.savedTo1Password).toBe(true)
+    expect(mockSaveApiKey).toHaveBeenCalledWith('Hal', 'sk-ant-key-123')
+  })
+
+  it('reports partial failure when one agent fails', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify([
+        { id: 'main', identityName: 'Hal', identityEmoji: '', workspace: '', agentDir: '', model: '', isDefault: true },
+        { id: 'broken', identityName: 'Broken', identityEmoji: '', workspace: '', agentDir: '', model: '', isDefault: false },
+      ]),
+      stderr: '', code: 0,
+    })
+    // main: success (read + mkdir + write)
+    mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+    // broken: write fails (read + mkdir + write fails)
+    mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: 'Permission denied', code: 1 })
+    // restart gateway
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+
+    mockSaveApiKey.mockResolvedValue({ id: 'item-1', title: 'Hal - Anthropic API Key' })
+
+    const result = await rotateKey(config, 'sk-ant-key-123', 'Hal')
+
+    expect(result.success).toBe(true)
+    expect(result.agents).toEqual(['main'])
+    expect(result.failedAgents).toEqual(['broken'])
+  })
+
+  it('reports 1Password failure without failing overall', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify([
+        { id: 'main', identityName: 'Hal', identityEmoji: '', workspace: '', agentDir: '', model: '', isDefault: true },
+      ]),
+      stderr: '', code: 0,
+    })
+    // main: success (read + mkdir + write)
+    mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+    // restart gateway
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+
+    mockSaveApiKey.mockRejectedValue(new Error('1Password unavailable'))
+
+    const result = await rotateKey(config, 'sk-ant-key-123', 'Hal')
+
+    expect(result.success).toBe(true)
+    expect(result.agents).toEqual(['main'])
+    expect(result.savedTo1Password).toBe(false)
   })
 })
