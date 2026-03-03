@@ -191,11 +191,16 @@ export async function sendChatMessage(
   if (output.startsWith('{')) {
     try {
       const parsed = JSON.parse(output)
+      // Current openclaw CLI format: { result: { payloads: [{ text }], meta: { agentMeta: { model, sessionId } } } }
+      const payloads = parsed.result?.payloads
+      const meta = parsed.result?.meta?.agentMeta
+      const reply = payloads?.[0]?.text
+        ?? parsed.reply ?? parsed.content ?? parsed.message ?? ''
       return {
-        reply: parsed.reply ?? parsed.content ?? parsed.message ?? '',
+        reply,
         agentId: parsed.agentId ?? agentId,
-        model: parsed.model ?? '',
-        sessionId: parsed.sessionId ?? '',
+        model: meta?.model ?? parsed.model ?? '',
+        sessionId: meta?.sessionId ?? parsed.sessionId ?? '',
       }
     } catch {
       // fall through to plain text
