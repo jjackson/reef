@@ -22,6 +22,7 @@ import {
   listDirectory,
   readRemoteFile,
   setApiKey,
+  rotateKey,
 } from '../lib/openclaw'
 import { runCommand } from '../lib/ssh'
 import { createMachine } from '../lib/create-machine'
@@ -287,6 +288,15 @@ async function main() {
       break
     }
 
+    case 'rotate-key': {
+      const [instanceId, key] = args
+      if (!key) fail('Usage: reef rotate-key <instance> <api-key>')
+      const instance = await requireInstance(instanceId)
+      const result = await rotateKey(sshConfig(instance), key, instance.opName)
+      console.log(JSON.stringify({ success: result.success, ...result }))
+      break
+    }
+
     case 'logs': {
       const [instanceId, ...rest] = args
       if (!instanceId) fail('Usage: reef logs <instance> [--lines N] [--agent <agent>]')
@@ -455,6 +465,7 @@ async function main() {
         '',
         'Config commands:',
         '  set-key <instance> <key> [--agent A] [--provider P] [--restart]  Set API key',
+        '  rotate-key <instance> <key>            Rotate API key across all agents + 1Password',
         '',
         'Channel commands:',
         '  add-channel <instance> <type> <token> [account]  Add a channel',
