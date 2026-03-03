@@ -5,17 +5,15 @@ const { mockRunCommand } = vi.hoisted(() => ({
 }))
 vi.mock('../ssh', () => ({ runCommand: mockRunCommand }))
 
-const { mockListInstances, mockResolveInstance, mockListAgents, mockLoadSettings } = vi.hoisted(() => ({
+const { mockListInstances, mockResolveInstance, mockLoadSettings } = vi.hoisted(() => ({
   mockListInstances: vi.fn(),
   mockResolveInstance: vi.fn(),
-  mockListAgents: vi.fn(),
   mockLoadSettings: vi.fn(),
 }))
 vi.mock('../instances', () => ({
   listInstances: mockListInstances,
   resolveInstance: mockResolveInstance,
 }))
-vi.mock('../openclaw', () => ({ listAgents: mockListAgents }))
 vi.mock('../settings', () => ({
   loadSettings: mockLoadSettings,
   getAccounts: vi.fn().mockReturnValue([]),
@@ -23,149 +21,188 @@ vi.mock('../settings', () => ({
   resetSettingsCache: vi.fn(),
 }))
 
-import { getAgentKnowledge, getFleetKnowledge, findSkill } from '../insights'
+import { getInstanceKnowledge, getAgentKnowledge, getFleetKnowledge, findSkill } from '../insights'
 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
-describe('getAgentKnowledge', () => {
+// Helper: build batched output matching the for-loop format
+function batchOutput(files: { name: string; content: string; epoch: number }[]): string {
+  return files.map(f =>
+    `___FILE___${f.name}\n${f.content}___REEF_SEP___\n${f.epoch}\n___END___`
+  ).join('\n')
+}
+
+describe('getInstanceKnowledge', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('returns memories and skills for an agent', async () => {
-    const base = '$HOME/.openclaw/agents/hal'
+  it('returns memories, skills, and identity files for an instance', async () => {
+    const ws = '$HOME/.openclaw/workspace'
+    let callNum = 0
     mockRunCommand.mockImplementation((_cfg: unknown, cmd: string) => {
-      if (cmd === `ls -1 "${base}/memories" 2>/dev/null || true`) {
-        return Promise.resolve({ stdout: 'goal.md\nhabits.md\n', stderr: '', code: 0 })
+      // Memory files (batch read)
+      if (cmd.includes(`"${ws}/memory"/*.md`)) {
+        return Promise.resolve({
+          stdout: batchOutput([
+            { name: '2026-03-01.md', content: 'Daily notes', epoch: 1709000000 },
+            { name: '2026-03-02.md', content: 'More notes', epoch: 1709100000 },
+          ]),
+          stderr: '', code: 0,
+        })
       }
-      if (cmd === `ls -1 "${base}/skills" 2>/dev/null || true`) {
-        return Promise.resolve({ stdout: 'search.md\n', stderr: '', code: 0 })
+      // Skills (batch read)
+      if (cmd.includes(`"${ws}/skills"/*/`)) {
+        return Promise.resolve({
+          stdout: batchOutput([
+            { name: 'search', content: 'Use grep', epoch: 1709200000 },
+            { name: 'coding', content: 'Write code', epoch: 1709300000 },
+          ]),
+          stderr: '', code: 0,
+        })
       }
-      // combined cat+stat for memory files
-      if (cmd === `cat "${base}/memories/goal.md" && echo "___REEF_SEP___" && stat -c '%Y' "${base}/memories/goal.md"`) {
-        return Promise.resolve({ stdout: 'Be helpful___REEF_SEP___\n1709000000\n', stderr: '', code: 0 })
+      // Identity files (batch read from workspace root)
+      if (cmd.includes(`"${ws}"/*.md`)) {
+        return Promise.resolve({
+          stdout: batchOutput([
+            { name: 'SOUL.md', content: 'I am helpful', epoch: 1709400000 },
+            { name: 'IDENTITY.md', content: 'Name: Eva', epoch: 1709500000 },
+          ]),
+          stderr: '', code: 0,
+        })
       }
-      if (cmd === `cat "${base}/memories/habits.md" && echo "___REEF_SEP___" && stat -c '%Y' "${base}/memories/habits.md"`) {
-        return Promise.resolve({ stdout: 'Check daily___REEF_SEP___\n1709100000\n', stderr: '', code: 0 })
-      }
-      // combined cat+stat for skill files
-      if (cmd === `cat "${base}/skills/search.md" && echo "___REEF_SEP___" && stat -c '%Y' "${base}/skills/search.md"`) {
-        return Promise.resolve({ stdout: 'Use grep___REEF_SEP___\n1709200000\n', stderr: '', code: 0 })
-      }
-      return Promise.resolve({ stdout: '', stderr: '', code: 1 })
+      return Promise.resolve({ stdout: '', stderr: '', code: 0 })
     })
 
-    const result = await getAgentKnowledge(config, 'hal', 'Hal', '\u{1F916}', 'openclaw-hal')
+    const result = await getInstanceKnowledge(config, 'openclaw-eva')
 
-    expect(result.instance).toBe('openclaw-hal')
-    expect(result.agentId).toBe('hal')
-    expect(result.agentName).toBe('Hal')
-    expect(result.agentEmoji).toBe('\u{1F916}')
+    expect(result.instance).toBe('openclaw-eva')
     expect(result.memories).toHaveLength(2)
-    expect(result.skills).toHaveLength(1)
+    expect(result.skills).toHaveLength(2)
+    expect(result.identity).toHaveLength(2)
 
-    expect(result.memories[0].name).toBe('goal.md')
-    expect(result.memories[0].content).toBe('Be helpful')
+    expect(result.memories[0].name).toBe('2026-03-01.md')
+    expect(result.memories[0].content).toBe('Daily notes')
     expect(result.memories[0].lastModified).toBe(new Date(1709000000 * 1000).toISOString())
 
-    expect(result.memories[1].name).toBe('habits.md')
-    expect(result.memories[1].content).toBe('Check daily')
-
-    expect(result.skills[0].name).toBe('search.md')
+    expect(result.skills[0].name).toBe('search')
     expect(result.skills[0].content).toBe('Use grep')
-    expect(result.skills[0].lastModified).toBe(new Date(1709200000 * 1000).toISOString())
+
+    expect(result.skills[1].name).toBe('coding')
+    expect(result.skills[1].content).toBe('Write code')
+
+    expect(result.identity[0].name).toBe('SOUL.md')
+    expect(result.identity[0].content).toBe('I am helpful')
+
+    // Should be exactly 3 SSH calls (one per directory)
+    expect(mockRunCommand).toHaveBeenCalledTimes(3)
   })
 
-  it('returns empty arrays when agent has no memories or skills', async () => {
+  it('returns empty arrays when instance has no knowledge', async () => {
     mockRunCommand.mockResolvedValue({ stdout: '', stderr: '', code: 0 })
 
-    const result = await getAgentKnowledge(config, 'empty-agent')
+    const result = await getInstanceKnowledge(config, 'openclaw-empty')
 
-    expect(result.agentId).toBe('empty-agent')
-    expect(result.agentName).toBe('empty-agent')
-    expect(result.agentEmoji).toBe('')
-    expect(result.instance).toBe('')
+    expect(result.instance).toBe('openclaw-empty')
     expect(result.memories).toEqual([])
     expect(result.skills).toEqual([])
+    expect(result.identity).toEqual([])
   })
+})
 
-  it('throws for invalid agent IDs', async () => {
-    await expect(getAgentKnowledge(config, '../etc/passwd')).rejects.toThrow('Invalid agent ID: ../etc/passwd')
-    await expect(getAgentKnowledge(config, 'foo bar')).rejects.toThrow('Invalid agent ID: foo bar')
-    await expect(getAgentKnowledge(config, '')).rejects.toThrow('Invalid agent ID: ')
+describe('getAgentKnowledge backward compat', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('delegates to getInstanceKnowledge', async () => {
+    mockRunCommand.mockResolvedValue({ stdout: '', stderr: '', code: 0 })
+
+    const result = await getAgentKnowledge(config, 'agent-id', 'Agent Name', '🤖', 'openclaw-hal')
+
+    expect(result.instance).toBe('openclaw-hal')
+    expect(result.memories).toEqual([])
+    expect(result.skills).toEqual([])
+    expect(result.identity).toEqual([])
   })
 })
 
 describe('getFleetKnowledge', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('aggregates knowledge across multiple agents on one instance', async () => {
-    // Mock listInstances: one instance
+  it('aggregates knowledge across multiple instances', async () => {
     mockListInstances.mockResolvedValue([
       { id: 'openclaw-hal', label: 'openclaw-hal', ip: '1.2.3.4', providerId: '123', provider: 'digitalocean', platform: 'openclaw', sshKeyRef: 'op://ref', accountId: 'personal' },
+      { id: 'openclaw-eva', label: 'openclaw-eva', ip: '5.6.7.8', providerId: '456', provider: 'digitalocean', platform: 'openclaw', sshKeyRef: 'op://ref2', accountId: 'personal' },
     ])
 
-    // Mock resolveInstance: returns resolved instance with sshKey
-    mockResolveInstance.mockResolvedValue({
-      id: 'openclaw-hal', label: 'openclaw-hal', ip: '1.2.3.4', providerId: '123', provider: 'digitalocean', platform: 'openclaw', sshKeyRef: 'op://ref', accountId: 'personal', sshKey: 'fake-key',
+    mockResolveInstance.mockImplementation((id: string) => {
+      if (id === 'openclaw-hal') return Promise.resolve({ id: 'openclaw-hal', ip: '1.2.3.4', sshKey: 'fake-key' })
+      if (id === 'openclaw-eva') return Promise.resolve({ id: 'openclaw-eva', ip: '5.6.7.8', sshKey: 'fake-key2' })
+      return Promise.resolve(null)
     })
 
-    // Mock listAgents: two agents on the instance
-    mockListAgents.mockResolvedValue([
-      { id: 'hal', identityName: 'Hal', identityEmoji: '\u{1F916}', workspace: 'default', agentDir: '/home/.openclaw/agents/hal', model: 'gpt-4', isDefault: true },
-      { id: 'eve', identityName: 'Eve', identityEmoji: '\u{1F331}', workspace: 'default', agentDir: '/home/.openclaw/agents/eve', model: 'gpt-4', isDefault: false },
-    ])
-
-    // Mock loadSettings: no workspace filtering needed
     mockLoadSettings.mockReturnValue({ accounts: {}, workspaces: {} })
 
-    // Mock SSH commands for hal's knowledge
-    const halBase = '$HOME/.openclaw/agents/hal'
-    const eveBase = '$HOME/.openclaw/agents/eve'
+    const ws = '$HOME/.openclaw/workspace'
+    mockRunCommand.mockImplementation((cfg: unknown, cmd: string) => {
+      const host = (cfg as { host: string }).host
 
-    mockRunCommand.mockImplementation((_cfg: unknown, cmd: string) => {
-      // Hal memories
-      if (cmd === `ls -1 "${halBase}/memories" 2>/dev/null || true`) {
-        return Promise.resolve({ stdout: 'goal.md\n', stderr: '', code: 0 })
+      // Hal: 1 memory, 2 skills
+      if (host === '1.2.3.4') {
+        if (cmd.includes('/memory"/*.md')) {
+          return Promise.resolve({
+            stdout: batchOutput([{ name: 'goal.md', content: 'Be helpful', epoch: 1709000000 }]),
+            stderr: '', code: 0,
+          })
+        }
+        if (cmd.includes('/skills"/*/')) {
+          return Promise.resolve({
+            stdout: batchOutput([
+              { name: 'search', content: 'Use grep', epoch: 1709100000 },
+              { name: 'coding', content: 'Write code', epoch: 1709200000 },
+            ]),
+            stderr: '', code: 0,
+          })
+        }
+        if (cmd.includes(`"${ws}"/*.md`)) {
+          return Promise.resolve({
+            stdout: batchOutput([{ name: 'SOUL.md', content: 'I am Hal', epoch: 1709400000 }]),
+            stderr: '', code: 0,
+          })
+        }
       }
-      if (cmd === `ls -1 "${halBase}/skills" 2>/dev/null || true`) {
-        return Promise.resolve({ stdout: 'search.md\ncoding.md\n', stderr: '', code: 0 })
+
+      // Eva: 1 memory, 1 skill (search)
+      if (host === '5.6.7.8') {
+        if (cmd.includes('/memory"/*.md')) {
+          return Promise.resolve({
+            stdout: batchOutput([{ name: 'personality.md', content: 'Be curious', epoch: 1709300000 }]),
+            stderr: '', code: 0,
+          })
+        }
+        if (cmd.includes('/skills"/*/')) {
+          return Promise.resolve({
+            stdout: batchOutput([{ name: 'search', content: 'Use ripgrep', epoch: 1709400000 }]),
+            stderr: '', code: 0,
+          })
+        }
+        if (cmd.includes(`"${ws}"/*.md`)) {
+          return Promise.resolve({ stdout: '', stderr: '', code: 0 })
+        }
       }
-      if (cmd === `cat "${halBase}/memories/goal.md" && echo "___REEF_SEP___" && stat -c '%Y' "${halBase}/memories/goal.md"`) {
-        return Promise.resolve({ stdout: 'Be helpful___REEF_SEP___\n1709000000\n', stderr: '', code: 0 })
-      }
-      if (cmd === `cat "${halBase}/skills/search.md" && echo "___REEF_SEP___" && stat -c '%Y' "${halBase}/skills/search.md"`) {
-        return Promise.resolve({ stdout: 'Use grep___REEF_SEP___\n1709100000\n', stderr: '', code: 0 })
-      }
-      if (cmd === `cat "${halBase}/skills/coding.md" && echo "___REEF_SEP___" && stat -c '%Y' "${halBase}/skills/coding.md"`) {
-        return Promise.resolve({ stdout: 'Write code___REEF_SEP___\n1709200000\n', stderr: '', code: 0 })
-      }
-      // Eve memories
-      if (cmd === `ls -1 "${eveBase}/memories" 2>/dev/null || true`) {
-        return Promise.resolve({ stdout: 'personality.md\n', stderr: '', code: 0 })
-      }
-      if (cmd === `ls -1 "${eveBase}/skills" 2>/dev/null || true`) {
-        return Promise.resolve({ stdout: 'search.md\n', stderr: '', code: 0 })
-      }
-      if (cmd === `cat "${eveBase}/memories/personality.md" && echo "___REEF_SEP___" && stat -c '%Y' "${eveBase}/memories/personality.md"`) {
-        return Promise.resolve({ stdout: 'Be curious___REEF_SEP___\n1709300000\n', stderr: '', code: 0 })
-      }
-      if (cmd === `cat "${eveBase}/skills/search.md" && echo "___REEF_SEP___" && stat -c '%Y' "${eveBase}/skills/search.md"`) {
-        return Promise.resolve({ stdout: 'Use ripgrep___REEF_SEP___\n1709400000\n', stderr: '', code: 0 })
-      }
-      return Promise.resolve({ stdout: '', stderr: '', code: 1 })
+
+      return Promise.resolve({ stdout: '', stderr: '', code: 0 })
     })
 
     const result = await getFleetKnowledge()
 
-    expect(result.agents).toHaveLength(2)
-    expect(result.totalMemories).toBe(2) // 1 from hal + 1 from eve
-    expect(result.totalSkills).toBe(3)   // 2 from hal + 1 from eve
+    expect(result.instances).toHaveLength(2)
+    expect(result.totalMemories).toBe(2) // 1 from hal + 1 from eva
+    expect(result.totalSkills).toBe(3)   // 2 from hal + 1 from eva
 
-    // skillIndex: search.md should map to both agents
-    expect(result.skillIndex['search.md']).toEqual(expect.arrayContaining(['hal', 'eve']))
-    expect(result.skillIndex['search.md']).toHaveLength(2)
+    // skillIndex: search should map to both instances
+    expect(result.skillIndex['search']).toEqual(expect.arrayContaining(['openclaw-hal', 'openclaw-eva']))
+    expect(result.skillIndex['search']).toHaveLength(2)
 
-    // coding.md should only map to hal
-    expect(result.skillIndex['coding.md']).toEqual(['hal'])
+    // coding should only map to hal
+    expect(result.skillIndex['coding']).toEqual(['openclaw-hal'])
   })
 
   it('gracefully handles instance resolution failure', async () => {
@@ -174,42 +211,31 @@ describe('getFleetKnowledge', () => {
       { id: 'openclaw-broken', label: 'openclaw-broken', ip: '5.6.7.8', providerId: '456', provider: 'digitalocean', platform: 'openclaw', sshKeyRef: 'op://ref2', accountId: 'personal' },
     ])
 
-    // First instance resolves, second returns null
     mockResolveInstance.mockImplementation((id: string) => {
-      if (id === 'openclaw-hal') {
-        return Promise.resolve({
-          id: 'openclaw-hal', label: 'openclaw-hal', ip: '1.2.3.4', providerId: '123', provider: 'digitalocean', platform: 'openclaw', sshKeyRef: 'op://ref', accountId: 'personal', sshKey: 'fake-key',
-        })
-      }
+      if (id === 'openclaw-hal') return Promise.resolve({ id: 'openclaw-hal', ip: '1.2.3.4', sshKey: 'fake-key' })
       return Promise.resolve(null)
     })
 
-    mockListAgents.mockResolvedValue([
-      { id: 'hal', identityName: 'Hal', identityEmoji: '\u{1F916}', workspace: 'default', agentDir: '/home/.openclaw/agents/hal', model: 'gpt-4', isDefault: true },
-    ])
-
     mockLoadSettings.mockReturnValue({ accounts: {}, workspaces: {} })
 
-    // SSH commands for hal
-    const halBase = '$HOME/.openclaw/agents/hal'
+    const ws = '$HOME/.openclaw/workspace'
     mockRunCommand.mockImplementation((_cfg: unknown, cmd: string) => {
-      if (cmd === `ls -1 "${halBase}/memories" 2>/dev/null || true`) {
+      if (cmd.includes('/memory"/*.md')) {
         return Promise.resolve({ stdout: '', stderr: '', code: 0 })
       }
-      if (cmd === `ls -1 "${halBase}/skills" 2>/dev/null || true`) {
-        return Promise.resolve({ stdout: 'search.md\n', stderr: '', code: 0 })
+      if (cmd.includes('/skills"/*/')) {
+        return Promise.resolve({
+          stdout: batchOutput([{ name: 'search', content: 'Use grep', epoch: 1709100000 }]),
+          stderr: '', code: 0,
+        })
       }
-      if (cmd === `cat "${halBase}/skills/search.md" && echo "___REEF_SEP___" && stat -c '%Y' "${halBase}/skills/search.md"`) {
-        return Promise.resolve({ stdout: 'Use grep___REEF_SEP___\n1709100000\n', stderr: '', code: 0 })
-      }
-      return Promise.resolve({ stdout: '', stderr: '', code: 1 })
+      return Promise.resolve({ stdout: '', stderr: '', code: 0 })
     })
 
     const result = await getFleetKnowledge()
 
-    // Should only have 1 agent (from the successfully resolved instance)
-    expect(result.agents).toHaveLength(1)
-    expect(result.agents[0].agentId).toBe('hal')
+    expect(result.instances).toHaveLength(1)
+    expect(result.instances[0].instance).toBe('openclaw-hal')
     expect(result.totalSkills).toBe(1)
     expect(result.totalMemories).toBe(0)
   })
@@ -218,59 +244,35 @@ describe('getFleetKnowledge', () => {
 describe('findSkill', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('returns agents that have a specific skill', async () => {
+  it('returns instances that have a specific skill', async () => {
     mockListInstances.mockResolvedValue([
       { id: 'openclaw-hal', label: 'openclaw-hal', ip: '1.2.3.4', providerId: '123', provider: 'digitalocean', platform: 'openclaw', sshKeyRef: 'op://ref', accountId: 'personal' },
     ])
 
-    mockResolveInstance.mockResolvedValue({
-      id: 'openclaw-hal', label: 'openclaw-hal', ip: '1.2.3.4', providerId: '123', provider: 'digitalocean', platform: 'openclaw', sshKeyRef: 'op://ref', accountId: 'personal', sshKey: 'fake-key',
-    })
-
-    mockListAgents.mockResolvedValue([
-      { id: 'hal', identityName: 'Hal', identityEmoji: '\u{1F916}', workspace: 'default', agentDir: '/home/.openclaw/agents/hal', model: 'gpt-4', isDefault: true },
-      { id: 'eve', identityName: 'Eve', identityEmoji: '\u{1F331}', workspace: 'default', agentDir: '/home/.openclaw/agents/eve', model: 'gpt-4', isDefault: false },
-    ])
-
+    mockResolveInstance.mockResolvedValue({ id: 'openclaw-hal', ip: '1.2.3.4', sshKey: 'fake-key' })
     mockLoadSettings.mockReturnValue({ accounts: {}, workspaces: {} })
 
-    const halBase = '$HOME/.openclaw/agents/hal'
-    const eveBase = '$HOME/.openclaw/agents/eve'
-
+    const ws = '$HOME/.openclaw/workspace'
     mockRunCommand.mockImplementation((_cfg: unknown, cmd: string) => {
-      // Hal: has coding.md skill only
-      if (cmd === `ls -1 "${halBase}/memories" 2>/dev/null || true`) {
+      if (cmd.includes('/memory"/*.md')) {
         return Promise.resolve({ stdout: '', stderr: '', code: 0 })
       }
-      if (cmd === `ls -1 "${halBase}/skills" 2>/dev/null || true`) {
-        return Promise.resolve({ stdout: 'coding.md\n', stderr: '', code: 0 })
+      if (cmd.includes('/skills"/*/')) {
+        return Promise.resolve({
+          stdout: batchOutput([
+            { name: 'coding', content: 'Write code', epoch: 1709200000 },
+            { name: 'search', content: 'Use ripgrep', epoch: 1709400000 },
+          ]),
+          stderr: '', code: 0,
+        })
       }
-      if (cmd === `cat "${halBase}/skills/coding.md" && echo "___REEF_SEP___" && stat -c '%Y' "${halBase}/skills/coding.md"`) {
-        return Promise.resolve({ stdout: 'Write code___REEF_SEP___\n1709200000\n', stderr: '', code: 0 })
-      }
-      // Eve: has search.md skill only
-      if (cmd === `ls -1 "${eveBase}/memories" 2>/dev/null || true`) {
-        return Promise.resolve({ stdout: '', stderr: '', code: 0 })
-      }
-      if (cmd === `ls -1 "${eveBase}/skills" 2>/dev/null || true`) {
-        return Promise.resolve({ stdout: 'search.md\n', stderr: '', code: 0 })
-      }
-      if (cmd === `cat "${eveBase}/skills/search.md" && echo "___REEF_SEP___" && stat -c '%Y' "${eveBase}/skills/search.md"`) {
-        return Promise.resolve({ stdout: 'Use ripgrep___REEF_SEP___\n1709400000\n', stderr: '', code: 0 })
-      }
-      return Promise.resolve({ stdout: '', stderr: '', code: 1 })
+      return Promise.resolve({ stdout: '', stderr: '', code: 0 })
     })
 
-    const result = await findSkill('coding.md')
+    const result = await findSkill('coding')
 
     expect(result).toHaveLength(1)
-    expect(result[0].agentId).toBe('hal')
-    expect(result[0].skills).toHaveLength(1)
-    expect(result[0].skills[0].name).toBe('coding.md')
-
-    // search.md should only return eve
-    const result2 = await findSkill('search.md')
-    expect(result2).toHaveLength(1)
-    expect(result2[0].agentId).toBe('eve')
+    expect(result[0].instance).toBe('openclaw-hal')
+    expect(result[0].skills.find(s => s.name === 'coding')?.content).toBe('Write code')
   })
 })

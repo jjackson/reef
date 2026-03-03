@@ -32,6 +32,7 @@ export interface WorkspaceWithInstances {
 export interface AccountWithInstances {
   id: string
   label: string
+  provider: string
   instances: InstanceWithAgents[]
   collapsed: boolean
 }
@@ -61,7 +62,7 @@ interface DashboardState {
   instances: InstanceWithAgents[]
   accounts: AccountWithInstances[]
   setInstances: (instances: InstanceWithAgents[]) => void
-  setAccountInstances: (accountId: string, label: string, instances: InstanceWithAgents[]) => void
+  setAccountInstances: (accountId: string, label: string, instances: InstanceWithAgents[], provider?: string) => void
   toggleAccountCollapse: (accountId: string) => void
   updateInstanceAgents: (instanceId: string, agents: AgentInfo[]) => void
 
@@ -175,21 +176,21 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }
     const newAccounts: AccountWithInstances[] = []
     for (const [id, insts] of grouped) {
-      newAccounts.push({ id, label: id === 'default' ? 'Default' : id, instances: insts, collapsed: false })
+      newAccounts.push({ id, label: id === 'default' ? 'Default' : id, provider: 'digitalocean', instances: insts, collapsed: false })
     }
     setAccounts(newAccounts)
   }, [])
 
   // Upsert an account entry
-  const setAccountInstances = useCallback((accountId: string, label: string, accountInstances: InstanceWithAgents[]) => {
+  const setAccountInstances = useCallback((accountId: string, label: string, accountInstances: InstanceWithAgents[], provider?: string) => {
     setAccounts(prev => {
       const existing = prev.findIndex(a => a.id === accountId)
       if (existing >= 0) {
         const next = [...prev]
-        next[existing] = { ...next[existing], label, instances: accountInstances }
+        next[existing] = { ...next[existing], label, instances: accountInstances, ...(provider && { provider }) }
         return next
       }
-      return [...prev, { id: accountId, label, instances: accountInstances, collapsed: false }]
+      return [...prev, { id: accountId, label, provider: provider || 'digitalocean', instances: accountInstances, collapsed: false }]
     })
   }, [])
 

@@ -16,7 +16,7 @@ import { z } from 'zod'
 
 import { listInstances, resolveInstance } from '../lib/instances'
 import { listAgents, getHealth, getAgentHealth } from '../lib/openclaw'
-import { getAgentKnowledge, getFleetKnowledge, findSkill } from '../lib/insights'
+import { getInstanceKnowledge, getFleetKnowledge, findSkill } from '../lib/insights'
 import { runCommand } from '../lib/ssh'
 import type { SshConfig } from '../lib/ssh'
 
@@ -158,7 +158,7 @@ server.registerTool(
   'fleet_knowledge',
   {
     title: 'Fleet Knowledge',
-    description: 'Get aggregated memories and skills across all agents in the fleet. Optionally filter by workspace.',
+    description: 'Get aggregated memories, skills, and identity files across all instances in the fleet. Optionally filter by workspace.',
     inputSchema: {
       workspace: z.string().optional().describe('Workspace ID to filter by'),
     },
@@ -174,25 +174,24 @@ server.registerTool(
 )
 
 // ---------------------------------------------------------------------------
-// Tool 4: agent_knowledge
+// Tool 4: instance_knowledge
 // ---------------------------------------------------------------------------
 server.registerTool(
-  'agent_knowledge',
+  'instance_knowledge',
   {
-    title: 'Agent Knowledge',
-    description: 'Get memories and skills for a specific agent on an instance.',
+    title: 'Instance Knowledge',
+    description: 'Get memories, skills, and identity files for an instance from ~/.openclaw/workspace/.',
     inputSchema: {
       instance: z.string().describe('Instance ID (e.g. "openclaw-hal")'),
-      agent: z.string().describe('Agent ID (e.g. "main")'),
     },
   },
-  async ({ instance: instanceId, agent: agentId }) => {
+  async ({ instance: instanceId }) => {
     try {
       const resolved = await resolveOrError(instanceId)
       if (!resolved) return errorResult(`Instance not found: ${instanceId}`)
 
       const config = toSshConfig(resolved)
-      const knowledge = await getAgentKnowledge(config, agentId, agentId, '', instanceId)
+      const knowledge = await getInstanceKnowledge(config, instanceId)
       return jsonText(knowledge)
     } catch (err) {
       return errorResult(err instanceof Error ? err.message : String(err))
@@ -207,19 +206,17 @@ server.registerTool(
   'find_skill',
   {
     title: 'Find Skill',
-    description: 'Find which agents across the fleet have a specific skill file.',
+    description: 'Find which instances across the fleet have a specific skill directory.',
     inputSchema: {
-      skillName: z.string().describe('Skill filename to search for (e.g. "python.md")'),
+      skillName: z.string().describe('Skill directory name to search for (e.g. "coding")'),
     },
   },
   async ({ skillName }) => {
     try {
       const matches = await findSkill(skillName)
-      const result = matches.map((agent) => ({
-        instance: agent.instance,
-        agentId: agent.agentId,
-        agentName: agent.agentName,
-        skillContent: agent.skills.find((s) => s.name === skillName)?.content ?? '',
+      const result = matches.map((inst) => ({
+        instance: inst.instance,
+        skillContent: inst.skills.find((s) => s.name === skillName)?.content ?? '',
       }))
       return jsonText(result)
     } catch (err) {

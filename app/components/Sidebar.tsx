@@ -137,12 +137,15 @@ function MachineItem({ instance }: { instance: { id: string; label: string; ip: 
 }
 
 export function Sidebar() {
-  const { instances, workspaces, activeWorkspaceId, setActiveWorkspace, checkedAgents, toggleAll, goHome } = useDashboard()
+  const { instances, accounts, workspaces, activeWorkspaceId, setActiveWorkspace, checkedAgents, toggleAll, goHome } = useDashboard()
   const [treeCollapsed, setTreeCollapsed] = useState(false)
 
   // Determine which instances to show: active workspace's instances, or all if no workspaces
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
   const visibleInstances = activeWorkspace ? activeWorkspace.instances : instances
+
+  // Derive provider(s) for the active workspace from account data
+  const providers = [...new Set(accounts.map(a => a.provider).filter(Boolean))]
 
   const allAgents = visibleInstances.flatMap(i => i.agents.map(a => `${i.id}:${a.id}`))
   const allChecked = allAgents.length > 0 && allAgents.every(k => checkedAgents.has(k))
@@ -166,8 +169,15 @@ export function Sidebar() {
               ))}
             </select>
           ) : (
-            <div className="text-xs text-gray-500 px-2 py-0.5">
-              {activeWorkspace?.label || 'Default'} <span className="text-gray-400">({visibleInstances.length})</span>
+            <div className="px-2 py-0.5">
+              <div className="text-xs font-medium text-gray-700">
+                {activeWorkspace?.label || 'Default'} <span className="text-gray-400 font-normal">({visibleInstances.length})</span>
+              </div>
+            </div>
+          )}
+          {providers.length > 0 && (
+            <div className="px-2 py-0.5">
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">{providers.join(', ')}</span>
             </div>
           )}
         </div>
