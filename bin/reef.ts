@@ -25,6 +25,7 @@ import {
   rotateKey,
 } from '../lib/openclaw'
 import { runCommand } from '../lib/ssh'
+import { getBotName } from '../lib/mapping'
 import { createMachine } from '../lib/create-machine'
 import { existsSync } from 'fs'
 import { resolve, join } from 'path'
@@ -292,7 +293,7 @@ async function main() {
       const [instanceId, key] = args
       if (!key) fail('Usage: reef rotate-key <instance> <api-key>')
       const instance = await requireInstance(instanceId)
-      const result = await rotateKey(sshConfig(instance), key, instance.opName)
+      const result = await rotateKey(sshConfig(instance), key, getBotName(instance.id) || instance.id)
       console.log(JSON.stringify({ success: result.success, ...result }))
       break
     }

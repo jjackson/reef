@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { resolveInstance } from '@/lib/instances'
 import { rotateKey } from '@/lib/openclaw'
+import { getBotName } from '@/lib/mapping'
 
 export async function POST(
   req: Request,
@@ -20,7 +21,7 @@ export async function POST(
     const result = await rotateKey(
       { host: instance.ip, privateKey: instance.sshKey },
       key,
-      instance.opName
+      getBotName(instance.id) || instance.id
     )
     return NextResponse.json(result, { status: result.success ? 200 : 500 })
   } catch (err) {
