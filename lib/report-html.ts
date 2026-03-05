@@ -218,16 +218,6 @@ function getStyles(): string {
     }
     .narrative-item:last-child { border-bottom: none; }
 
-    .localhost-notice {
-      background: var(--amber-50); border: 1px solid var(--amber-100);
-      border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.75rem;
-      color: var(--amber-700); margin-bottom: 1.5rem;
-    }
-    .localhost-badge {
-      display: inline-block; padding: 0 0.375rem; background: var(--slate-100);
-      border-radius: 0.25rem; font-size: 0.65rem; color: var(--slate-500);
-      margin-left: 0.25rem; vertical-align: middle;
-    }
 
     .footer {
       margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--slate-200);
@@ -240,7 +230,6 @@ function getStyles(): string {
       body { padding: 0; max-width: none; }
       .instance-card, .file-card { break-inside: avoid; }
       details[open] summary ~ * { display: block !important; }
-      .localhost-notice, .localhost-badge { display: none; }
     }
 
     @media (max-width: 768px) {
@@ -362,6 +351,88 @@ function renderFleetNarrative(fleet: FleetKnowledge): string {
   `
 }
 
+function renderLearningOpportunities(fleet: FleetKnowledge): string {
+  const sections: string[] = []
+  const sevenDaysAgo = Date.now() - 7 * 86400 * 1000
+
+  // 1. Skills to spread: skills on exactly 1 instance
+  const unique = Object.entries(fleet.skillIndex)
+    .filter(([, owners]) => owners.length === 1)
+    .sort(([a], [b]) => a.localeCompare(b))
+
+  if (unique.length > 0) {
+    const items = unique.map(([skillName, owners]) => {
+      const owner = owners[0]
+      const inst = fleet.instances.find(i => i.instance === owner)
+      const skill = inst?.skills.find(s => s.name === skillName)
+      const desc = skill ? extractSkillDescription(skill.content) : ''
+      return `
+        <div class="narrative-item" style="display:flex;align-items:baseline;gap:0.5rem;">
+          <code style="color:var(--indigo-700);white-space:nowrap;">${escapeHtml(skillName)}</code>
+          <span style="color:var(--slate-400);">on</span>
+          <code style="font-size:0.8rem;">${escapeHtml(owner)}</code>
+          ${desc ? `<span style="color:var(--slate-500);font-size:0.8rem;margin-left:auto;">— ${escapeHtml(desc)}</span>` : ''}
+        </div>
+      `
+    }).join('')
+
+    sections.push(`
+      <div style="margin-bottom:1rem;">
+        <div style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--indigo-600);margin-bottom:0.5rem;">
+          Skills to Spread
+          <span style="font-weight:400;color:var(--slate-400);text-transform:none;letter-spacing:normal;margin-left:0.5rem;">${unique.length} skill${unique.length !== 1 ? 's' : ''} unique to one instance</span>
+        </div>
+        <div class="narrative-card">${items}</div>
+      </div>
+    `)
+  }
+
+  // 2. Recently evolved: skills modified in the last 7 days
+  const recent: { skillName: string; instance: string; lastModified: string }[] = []
+  for (const inst of fleet.instances) {
+    for (const skill of inst.skills) {
+      const ts = new Date(skill.lastModified).getTime()
+      if (ts > sevenDaysAgo && ts > 0) {
+        recent.push({ skillName: skill.name, instance: inst.instance, lastModified: skill.lastModified })
+      }
+    }
+  }
+  recent.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime())
+
+  if (recent.length > 0) {
+    const items = recent.map(r => {
+      const dateStr = formatDate(r.lastModified)
+      return `
+        <div class="narrative-item" style="display:flex;align-items:baseline;gap:0.5rem;">
+          <code style="color:var(--indigo-700);white-space:nowrap;">${escapeHtml(r.skillName)}</code>
+          <span style="color:var(--slate-400);">on</span>
+          <code style="font-size:0.8rem;">${escapeHtml(r.instance)}</code>
+          ${dateStr ? `<span style="color:var(--slate-400);font-size:0.75rem;margin-left:auto;">${escapeHtml(dateStr)}</span>` : ''}
+        </div>
+      `
+    }).join('')
+
+    sections.push(`
+      <div>
+        <div style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--amber-600);margin-bottom:0.5rem;">
+          Recently Evolved
+          <span style="font-weight:400;color:var(--slate-400);text-transform:none;letter-spacing:normal;margin-left:0.5rem;">modified in the last 7 days</span>
+        </div>
+        <div class="narrative-card">${items}</div>
+      </div>
+    `)
+  }
+
+  if (sections.length === 0) return ''
+
+  return `
+    <div class="section">
+      <div class="section-title">Learning Opportunities</div>
+      ${sections.join('')}
+    </div>
+  `
+}
+
 function renderSkillMatrix(fleet: FleetKnowledge): string {
   const skills = Object.entries(fleet.skillIndex).sort(([, a], [, b]) => b.length - a.length)
   if (skills.length === 0) return ''
@@ -435,24 +506,16 @@ const FILE_TYPE_BADGES: Record<FileType, { label: string; color: string }> = {
 
 function renderFileCards(
   files: { name: string; content: string; lastModified: string }[],
-  type: FileType,
-  instanceId: string
+  type: FileType
 ): string {
   const badgeInfo = FILE_TYPE_BADGES[type]
   return files.map(f => {
-    const browseUrl = type === 'skill'
-      ? `http://localhost:3050/api/instances/${encodeURIComponent(instanceId)}/browse/read?path=~/.openclaw/workspace/skills/${encodeURIComponent(f.name)}/SKILL.md`
-      : type === 'memory'
-      ? `http://localhost:3050/api/instances/${encodeURIComponent(instanceId)}/browse/read?path=~/.openclaw/workspace/memory/${encodeURIComponent(f.name)}`
-      : `http://localhost:3050/api/instances/${encodeURIComponent(instanceId)}/browse/read?path=~/.openclaw/workspace/${encodeURIComponent(f.name)}`
-
     const dateStr = formatDate(f.lastModified)
     return `
       <details class="file-card">
         <summary>
           <span class="badge ${badgeInfo.color}">${badgeInfo.label}</span>
           <span class="file-name ${type} mono">${escapeHtml(f.name)}</span>
-          <a href="${escapeHtml(browseUrl)}" target="_blank" title="View in Reef">view<span class="localhost-badge">localhost:3050</span></a>
           ${dateStr ? `<span class="file-date">${escapeHtml(dateStr)}</span>` : ''}
         </summary>
         <div class="file-content">${renderMarkdownHtml(f.content)}</div>
@@ -489,7 +552,7 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
         body += `
           <div class="knowledge-section">
             <div class="knowledge-label identity">Identity</div>
-            ${renderFileCards(inst.identity, 'identity-file', inst.instance)}
+            ${renderFileCards(inst.identity, 'identity-file')}
           </div>
         `
       }
@@ -497,7 +560,7 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
         body += `
           <div class="knowledge-section">
             <div class="knowledge-label skills">Skills</div>
-            ${renderFileCards(inst.skills, 'skill', inst.instance)}
+            ${renderFileCards(inst.skills, 'skill')}
           </div>
         `
       }
@@ -505,7 +568,7 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
         body += `
           <div class="knowledge-section">
             <div class="knowledge-label memories">Memories</div>
-            ${renderFileCards(inst.memories, 'memory', inst.instance)}
+            ${renderFileCards(inst.memories, 'memory')}
           </div>
         `
       }
@@ -513,7 +576,7 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
         body += `
           <div class="knowledge-section">
             <div class="knowledge-label config">Config</div>
-            ${renderFileCards(configFiles, 'config-file', inst.instance)}
+            ${renderFileCards(configFiles, 'config-file')}
           </div>
         `
       }
@@ -521,7 +584,7 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
         body += `
           <div class="knowledge-section">
             <div class="knowledge-label docs">Workspace Docs</div>
-            ${renderFileCards(docFiles, 'doc-file', inst.instance)}
+            ${renderFileCards(docFiles, 'doc-file')}
           </div>
         `
       }
@@ -530,9 +593,7 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
     return `
       <details class="instance-card">
         <summary>
-          <span style="display:flex;align-items:center;">
-            <span class="instance-name mono">${escapeHtml(inst.instance)}</span>
-          </span>
+          <span class="instance-name mono">${escapeHtml(inst.instance)}</span>
           <span class="instance-meta">${escapeHtml(meta || 'empty')}</span>
         </summary>
         <div class="instance-body">${body}</div>
@@ -543,10 +604,7 @@ function renderInstanceDetails(fleet: FleetKnowledge): string {
   return `
     <div class="section">
       <div class="section-title">Instance Deep Dives</div>
-      <div class="localhost-notice">
-        Links in this report point to <strong>localhost:3050</strong> and require the Reef dev server to be running locally.
-      </div>
-      ${cards}
+${cards}
     </div>
   `
 }
@@ -574,6 +632,7 @@ export function generateFleetReport(fleet: FleetKnowledge, workspaceLabel?: stri
   ${renderHeader(workspaceLabel)}
   ${renderSummaryCards(fleet)}
   ${renderFleetNarrative(fleet)}
+  ${renderLearningOpportunities(fleet)}
   ${renderSkillMatrix(fleet)}
   ${renderInstanceDetails(fleet)}
   ${renderFooter()}
