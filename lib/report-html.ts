@@ -155,7 +155,7 @@ function getStyles(): string {
       margin-right: 0.75rem; transition: transform 0.15s;
     }
     .instance-card[open] summary::before { transform: rotate(90deg); }
-    .instance-card .instance-name { font-weight: 600; font-size: 0.875rem; color: var(--slate-800); }
+    .instance-card .instance-name { font-weight: 600; font-size: 0.875rem; color: var(--slate-800); text-align: left; }
     .instance-card .instance-meta { font-size: 0.75rem; color: var(--slate-400); }
     .instance-body { padding: 1.25rem; }
 

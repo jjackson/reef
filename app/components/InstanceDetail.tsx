@@ -17,8 +17,6 @@ export function InstanceDetail() {
   const [showTerminal, setShowTerminal] = useState(false)
   const [terminalCommand, setTerminalCommand] = useState<string | undefined>()
   const [terminalKey, setTerminalKey] = useState(0)
-  const [version, setVersion] = useState<string | null>(null)
-
   const instance = instances.find(i => i.id === activeInstanceId)
 
   useEffect(() => {
@@ -29,14 +27,6 @@ export function InstanceDetail() {
         .then(data => updateInstanceAgents(instance.id, data))
         .catch(() => {})
     }
-    // Fetch OpenClaw version
-    setVersion(null)
-    fetch(`/api/instances/${instance.id}/health`, { method: 'POST' })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data?.version) setVersion(data.version)
-      })
-      .catch(() => {})
   }, [instance?.id, updateInstanceAgents])
 
   if (!instance) {
@@ -139,9 +129,6 @@ export function InstanceDetail() {
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="text-xs text-slate-400 font-mono">{instance.ip}</span>
                   <span className="text-xs text-slate-500">{instance.agents.length} agent{instance.agents.length !== 1 ? 's' : ''}</span>
-                  {version && (
-                    <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-mono">v{version}</span>
-                  )}
                 </div>
               </div>
             </div>
