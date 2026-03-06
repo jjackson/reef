@@ -144,7 +144,7 @@ function getStyles(): string {
     }
     .instance-card summary {
       padding: 0.875rem 1.25rem; cursor: pointer; display: flex;
-      align-items: center; justify-content: space-between;
+      align-items: center;
       background: var(--slate-50); border-bottom: 1px solid var(--slate-200);
       list-style: none; transition: background 0.15s;
     }
@@ -156,7 +156,7 @@ function getStyles(): string {
     }
     .instance-card[open] summary::before { transform: rotate(90deg); }
     .instance-card .instance-name { font-weight: 600; font-size: 0.875rem; color: var(--slate-800); text-align: left; }
-    .instance-card .instance-meta { font-size: 0.75rem; color: var(--slate-400); }
+    .instance-card .instance-meta { font-size: 0.75rem; color: var(--slate-400); margin-left: auto; }
     .instance-body { padding: 1.25rem; }
 
     .knowledge-section { margin-bottom: 1rem; }
