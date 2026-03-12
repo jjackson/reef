@@ -442,6 +442,58 @@ export async function searchMemory(config: SshConfig, query: string): Promise<Me
   }
 }
 
+export interface MemoryConfig {
+  enabled?: boolean
+  provider?: string
+  model?: string
+}
+
+export interface ConfigureMemoryResult {
+  success: boolean
+  error?: string
+}
+
+export async function configureMemory(
+  config: SshConfig,
+  memoryConfig: MemoryConfig
+): Promise<ConfigureMemoryResult> {
+  const settingsPath = '$HOME/.openclaw/settings.json'
+
+  // Read existing settings
+  const readResult = await runCommand(config, `cat "${settingsPath}" 2>/dev/null || echo '{}'`)
+  let settings: Record<string, unknown>
+  try {
+    settings = JSON.parse(readResult.stdout.trim())
+  } catch {
+    settings = {}
+  }
+
+  // Deep-merge agents.defaults.memorySearch
+  if (!settings.agents) settings.agents = {}
+  const agents = settings.agents as Record<string, unknown>
+  if (!agents.defaults) agents.defaults = {}
+  const defaults = agents.defaults as Record<string, unknown>
+  const existing = (defaults.memorySearch || {}) as Record<string, unknown>
+
+  const merged: Record<string, unknown> = { ...existing }
+  if (memoryConfig.enabled !== undefined) merged.enabled = memoryConfig.enabled
+  if (memoryConfig.provider !== undefined) merged.provider = memoryConfig.provider
+  if (memoryConfig.model !== undefined) merged.model = memoryConfig.model
+  defaults.memorySearch = merged
+
+  // Write back
+  const json = JSON.stringify(settings, null, 2)
+  const writeResult = await runCommand(
+    config,
+    `cat > "${settingsPath}" << 'REEF_EOF'\n${json}\nREEF_EOF`
+  )
+
+  if (writeResult.code !== 0) {
+    return { success: false, error: (writeResult.stdout + writeResult.stderr).trim() }
+  }
+  return { success: true }
+}
+
 const SAFE_NAME_RE = /^[a-zA-Z0-9_-]+$/
 
 export interface CreateAgentResult {
