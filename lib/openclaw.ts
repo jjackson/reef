@@ -434,7 +434,7 @@ export async function indexMemory(config: SshConfig): Promise<MemoryStatusResult
 }
 
 export async function searchMemory(config: SshConfig, query: string): Promise<MemoryStatusResult> {
-  const escaped = query.replace(/'/g, "'\\''")
+  const escaped = query.replace(/\\/g, '\\\\').replace(/'/g, "'\\''")
   const result = await runCommand(config, `openclaw memory search '${escaped}' 2>&1`)
   return {
     success: result.code === 0,
