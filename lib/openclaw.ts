@@ -412,6 +412,36 @@ export async function runDoctor(config: SshConfig, options?: { fix?: boolean }):
   return { output: result.stdout + result.stderr, exitCode: result.code }
 }
 
+export interface MemoryStatusResult {
+  success: boolean
+  output: string
+}
+
+export async function getMemoryStatus(config: SshConfig): Promise<MemoryStatusResult> {
+  const result = await runCommand(config, 'openclaw memory status --deep 2>&1')
+  return {
+    success: result.code === 0,
+    output: (result.stdout + result.stderr).trim(),
+  }
+}
+
+export async function indexMemory(config: SshConfig): Promise<MemoryStatusResult> {
+  const result = await runCommand(config, 'openclaw memory index --verbose 2>&1')
+  return {
+    success: result.code === 0,
+    output: (result.stdout + result.stderr).trim(),
+  }
+}
+
+export async function searchMemory(config: SshConfig, query: string): Promise<MemoryStatusResult> {
+  const escaped = query.replace(/'/g, "'\\''")
+  const result = await runCommand(config, `openclaw memory search '${escaped}' 2>&1`)
+  return {
+    success: result.code === 0,
+    output: (result.stdout + result.stderr).trim(),
+  }
+}
+
 const SAFE_NAME_RE = /^[a-zA-Z0-9_-]+$/
 
 export interface CreateAgentResult {

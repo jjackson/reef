@@ -7,7 +7,7 @@ const { mockRunCommand, mockSaveApiKey } = vi.hoisted(() => ({
 vi.mock('../ssh', () => ({ runCommand: mockRunCommand }))
 vi.mock('../1password', () => ({ saveApiKey: mockSaveApiKey }))
 
-import { getHealth, listAgents, listDirectory, sendChatMessage, restartOpenClaw, rotateKey } from '../openclaw'
+import { getHealth, listAgents, listDirectory, sendChatMessage, restartOpenClaw, rotateKey, getMemoryStatus, indexMemory, searchMemory } from '../openclaw'
 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
@@ -276,5 +276,84 @@ describe('rotateKey', () => {
     expect(result.success).toBe(true)
     expect(result.agents).toEqual(['main'])
     expect(result.savedTo1Password).toBe(false)
+  })
+})
+
+describe('getMemoryStatus', () => {
+  beforeEach(() => mockRunCommand.mockReset())
+
+  it('returns parsed memory status from openclaw memory status --deep', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: 'Memory Search: enabled\nProvider: openai (text-embedding-3-small)\nIndexed: 42 chunks across 3 agents\n',
+      stderr: '',
+      code: 0,
+    })
+    const result = await getMemoryStatus(config)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('Memory Search: enabled')
+  })
+
+  it('returns success: false when command fails', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: '',
+      stderr: 'openclaw: command not found',
+      code: 127,
+    })
+    const result = await getMemoryStatus(config)
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('indexMemory', () => {
+  beforeEach(() => mockRunCommand.mockReset())
+
+  it('runs openclaw memory index --verbose and returns output', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: 'Indexing memories for agent main...\nProcessed 15 files, 42 chunks\nIndex complete.\n',
+      stderr: '',
+      code: 0,
+    })
+    const result = await indexMemory(config)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('Index complete')
+  })
+
+  it('returns success: false when indexing fails', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: '',
+      stderr: 'No embedding provider configured',
+      code: 1,
+    })
+    const result = await indexMemory(config)
+    expect(result.success).toBe(false)
+    expect(result.output).toContain('No embedding provider')
+  })
+})
+
+describe('searchMemory', () => {
+  beforeEach(() => mockRunCommand.mockReset())
+
+  it('runs openclaw memory search with query and returns results', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: '1. [main] memories/debugging.md (score: 0.87)\n   "When debugging SSH connections..."\n',
+      stderr: '',
+      code: 0,
+    })
+    const result = await searchMemory(config, 'SSH debugging')
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('score: 0.87')
+  })
+
+  it('escapes single quotes in query', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: 'No results found\n',
+      stderr: '',
+      code: 0,
+    })
+    await searchMemory(config, "user's preference")
+    expect(mockRunCommand).toHaveBeenCalledWith(
+      config,
+      expect.stringContaining("user'\\''s preference")
+    )
   })
 })
