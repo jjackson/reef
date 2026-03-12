@@ -23,6 +23,10 @@ import {
   readRemoteFile,
   setApiKey,
   rotateKey,
+  getMemoryStatus,
+  indexMemory,
+  searchMemory,
+  configureMemory,
 } from '../lib/openclaw'
 import { runCommand } from '../lib/ssh'
 import { getBotName } from '../lib/mapping'
@@ -443,6 +447,64 @@ async function main() {
       try { execSync(openCmd) } catch {}
 
       console.log(JSON.stringify({ success: true, path: outPath, instances: fleet.instances.length, skills: fleet.totalSkills, memories: fleet.totalMemories }))
+      break
+    }
+
+    case 'memory-status': {
+      const instance = await requireInstance(args[0])
+      const result = await getMemoryStatus(sshConfig(instance))
+      console.log(JSON.stringify(result))
+      break
+    }
+
+    case 'memory-index': {
+      const instance = await requireInstance(args[0])
+      const result = await indexMemory(sshConfig(instance))
+      console.log(JSON.stringify(result))
+      break
+    }
+
+    case 'memory-search': {
+      const [instanceId, ...queryParts] = args
+      const query = queryParts.join(' ')
+      if (!query) fail('Usage: reef memory-search <instance> <query>')
+      const instance = await requireInstance(instanceId)
+      const result = await searchMemory(sshConfig(instance), query)
+      console.log(JSON.stringify(result))
+      break
+    }
+
+    case 'memory-enable': {
+      const [instanceId, ...rest] = args
+      if (!instanceId) fail('Usage: reef memory-enable <instance> [--provider <provider>] [--model <model>]')
+      const instance = await requireInstance(instanceId)
+      const providerIdx = rest.indexOf('--provider')
+      const provider = providerIdx >= 0 ? rest[providerIdx + 1] : undefined
+      const modelIdx = rest.indexOf('--model')
+      const model = modelIdx >= 0 ? rest[modelIdx + 1] : undefined
+      const result = await configureMemory(sshConfig(instance), { enabled: true, provider, model })
+      console.log(JSON.stringify({ ...result, message: result.success ? 'Memory search enabled' : undefined }))
+      break
+    }
+
+    case 'memory-disable': {
+      const instance = await requireInstance(args[0])
+      const result = await configureMemory(sshConfig(instance), { enabled: false })
+      console.log(JSON.stringify({ ...result, message: result.success ? 'Memory search disabled' : undefined }))
+      break
+    }
+
+    case 'memory-config': {
+      const [instanceId, ...rest] = args
+      if (!instanceId) fail('Usage: reef memory-config <instance> [--provider <provider>] [--model <model>]')
+      const instance = await requireInstance(instanceId)
+      const providerIdx = rest.indexOf('--provider')
+      const provider = providerIdx >= 0 ? rest[providerIdx + 1] : undefined
+      const modelIdx = rest.indexOf('--model')
+      const model = modelIdx >= 0 ? rest[modelIdx + 1] : undefined
+      if (!provider && !model) fail('Specify at least --provider or --model')
+      const result = await configureMemory(sshConfig(instance), { provider, model })
+      console.log(JSON.stringify({ ...result, message: result.success ? 'Memory config updated' : undefined }))
       break
     }
 
