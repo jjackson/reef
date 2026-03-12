@@ -7,7 +7,7 @@ const { mockRunCommand, mockSaveApiKey } = vi.hoisted(() => ({
 vi.mock('../ssh', () => ({ runCommand: mockRunCommand }))
 vi.mock('../1password', () => ({ saveApiKey: mockSaveApiKey }))
 
-import { getHealth, listAgents, listDirectory, sendChatMessage, restartOpenClaw, rotateKey } from '../openclaw'
+import { getHealth, listAgents, listDirectory, sendChatMessage, restartOpenClaw, rotateKey, getMemoryStatus, indexMemory, searchMemory, configureMemory } from '../openclaw'
 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
@@ -276,5 +276,175 @@ describe('rotateKey', () => {
     expect(result.success).toBe(true)
     expect(result.agents).toEqual(['main'])
     expect(result.savedTo1Password).toBe(false)
+  })
+})
+
+describe('getMemoryStatus', () => {
+  beforeEach(() => mockRunCommand.mockReset())
+
+  it('returns parsed memory status from openclaw memory status --deep', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: 'Memory Search: enabled\nProvider: openai (text-embedding-3-small)\nIndexed: 42 chunks across 3 agents\n',
+      stderr: '',
+      code: 0,
+    })
+    const result = await getMemoryStatus(config)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('Memory Search: enabled')
+  })
+
+  it('returns success: false when command fails', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: '',
+      stderr: 'openclaw: command not found',
+      code: 127,
+    })
+    const result = await getMemoryStatus(config)
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('indexMemory', () => {
+  beforeEach(() => mockRunCommand.mockReset())
+
+  it('runs openclaw memory index --verbose and returns output', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: 'Indexing memories for agent main...\nProcessed 15 files, 42 chunks\nIndex complete.\n',
+      stderr: '',
+      code: 0,
+    })
+    const result = await indexMemory(config)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('Index complete')
+  })
+
+  it('returns success: false when indexing fails', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: '',
+      stderr: 'No embedding provider configured',
+      code: 1,
+    })
+    const result = await indexMemory(config)
+    expect(result.success).toBe(false)
+    expect(result.output).toContain('No embedding provider')
+  })
+})
+
+describe('searchMemory', () => {
+  beforeEach(() => mockRunCommand.mockReset())
+
+  it('runs openclaw memory search with query and returns results', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: '1. [main] memories/debugging.md (score: 0.87)\n   "When debugging SSH connections..."\n',
+      stderr: '',
+      code: 0,
+    })
+    const result = await searchMemory(config, 'SSH debugging')
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('score: 0.87')
+  })
+
+  it('escapes single quotes in query', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: 'No results found\n',
+      stderr: '',
+      code: 0,
+    })
+    await searchMemory(config, "user's preference")
+    expect(mockRunCommand).toHaveBeenCalledWith(
+      config,
+      expect.stringContaining("user'\\''s preference")
+    )
+  })
+})
+
+describe('configureMemory', () => {
+  beforeEach(() => mockRunCommand.mockReset())
+
+  it('enables memorySearch by reading, merging, and writing remote settings.json', async () => {
+    // Read existing settings
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({ plugins: { slots: {} } }),
+      stderr: '',
+      code: 0,
+    })
+    // Write updated settings
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: '',
+      stderr: '',
+      code: 0,
+    })
+    const result = await configureMemory(config, { enabled: true })
+    expect(result.success).toBe(true)
+    // Verify the write command includes the merged settings
+    const writeCall = mockRunCommand.mock.calls[1][1] as string
+    expect(writeCall).toContain('REEF_EOF')
+    expect(writeCall).toContain('"memorySearch"')
+  })
+
+  it('disables memorySearch', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        agents: { defaults: { memorySearch: { enabled: true, provider: 'openai' } } },
+      }),
+      stderr: '',
+      code: 0,
+    })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+
+    const result = await configureMemory(config, { enabled: false })
+    expect(result.success).toBe(true)
+    const writeCall = mockRunCommand.mock.calls[1][1] as string
+    expect(writeCall).toContain('"enabled": false')
+  })
+
+  it('sets provider and model', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: '{}',
+      stderr: '',
+      code: 0,
+    })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+
+    const result = await configureMemory(config, {
+      enabled: true,
+      provider: 'openai',
+      model: 'text-embedding-3-small',
+    })
+    expect(result.success).toBe(true)
+    const writeCall = mockRunCommand.mock.calls[1][1] as string
+    expect(writeCall).toContain('"provider": "openai"')
+    expect(writeCall).toContain('"model": "text-embedding-3-small"')
+  })
+
+  it('returns failure when write fails', async () => {
+    mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: 'Permission denied', code: 1 })
+    const result = await configureMemory(config, { enabled: true })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Permission denied')
+  })
+
+  it('preserves existing settings when merging', async () => {
+    mockRunCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        agents: { defaults: { memorySearch: { enabled: true, provider: 'openai', cache: { enabled: true } } } },
+        plugins: { slots: { memory: 'default' } },
+      }),
+      stderr: '',
+      code: 0,
+    })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+
+    await configureMemory(config, { model: 'text-embedding-3-large' })
+    const writeCall = mockRunCommand.mock.calls[1][1] as string
+    // Original settings preserved
+    expect(writeCall).toContain('"plugins"')
+    expect(writeCall).toContain('"cache"')
+    // New setting added
+    expect(writeCall).toContain('"model": "text-embedding-3-large"')
+    // Existing memorySearch settings preserved
+    expect(writeCall).toContain('"enabled": true')
+    expect(writeCall).toContain('"provider": "openai"')
   })
 })
