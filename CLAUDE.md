@@ -120,6 +120,14 @@ Reef includes a CLI tool for managing OpenClaw instances from the terminal. All 
 - `reef set-key <instance> <key> [--agent <agent>] [--provider <provider>] [--restart]` — set API key
 - `reef rotate-key <instance> <key>` — push Anthropic key to all agents, restart gateway, save to 1Password
 
+**Memory commands** (manage OpenClaw's semantic memory/embeddings feature):
+- `reef memory-status <instance>` — check embedding index state (provider, chunks indexed, store path)
+- `reef memory-index <instance>` — force full reindex of all memory files into embeddings
+- `reef memory-search <instance> <query>` — test semantic search against indexed memories
+- `reef memory-enable <instance> [--provider <provider>] [--model <model>]` — enable memory search
+- `reef memory-disable <instance>` — disable memory search
+- `reef memory-config <instance> --provider <provider> [--model <model>]` — configure embedding provider/model
+
 **Insights commands:**
 - `reef insights [--workspace <id>]` — fleet-wide knowledge inventory (memories, skills, identity across all instances)
 - `reef insights <instance>` — specific instance's memories, skills, and identity files
