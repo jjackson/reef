@@ -7,6 +7,7 @@ import {
   getStatus,
   runDoctor,
   restartOpenClaw,
+  upgradeOpenClaw,
   backupAgent,
   extractInstance,
   deployAgent,
@@ -110,6 +111,60 @@ async function main() {
       const instance = await requireInstance(args[0])
       const result = await restartOpenClaw(sshConfig(instance))
       console.log(JSON.stringify(result))
+      break
+    }
+
+    case 'upgrade': {
+      const instance = await requireInstance(args[0])
+      const result = await upgradeOpenClaw(sshConfig(instance))
+      console.log(JSON.stringify({ instance: instance.id, ...result }))
+      break
+    }
+
+    case 'upgrade-all': {
+      const wsIdx = args.indexOf('--workspace')
+      const wsFilter = wsIdx >= 0 ? args[wsIdx + 1] : undefined
+      const instances = await listInstances()
+      let targets = instances
+      if (wsFilter) {
+        const { getWorkspaces } = await import('../lib/workspaces')
+        const ws = getWorkspaces().find(w => w.id === wsFilter)
+        if (!ws) fail(`Workspace not found: ${wsFilter}`)
+        targets = instances.filter(i => ws!.instances.includes(i.id))
+      }
+      const results: Array<{
+        instance: string
+        success: boolean
+        beforeVersion?: string
+        afterVersion?: string
+        error?: string
+      }> = []
+      for (const inst of targets) {
+        try {
+          const resolved = await resolveInstance(inst.id)
+          if (!resolved) throw new Error('Could not resolve SSH key')
+          const r = await upgradeOpenClaw(sshConfig(resolved))
+          results.push({
+            instance: inst.id,
+            success: r.success,
+            beforeVersion: r.beforeVersion,
+            afterVersion: r.afterVersion,
+          })
+        } catch (err) {
+          results.push({
+            instance: inst.id,
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+      const failed = results.filter(r => !r.success).length
+      console.log(JSON.stringify({
+        success: failed === 0,
+        upgraded: results.length - failed,
+        failed,
+        results,
+      }))
       break
     }
 
@@ -517,6 +572,8 @@ async function main() {
         '  status <instance>                      Deep diagnostics (openclaw status --all --deep)',
         '  doctor <instance>                      Run openclaw doctor to auto-fix issues',
         '  restart <instance>                     Restart OpenClaw service',
+        '  upgrade <instance>                     Upgrade OpenClaw (npm update -g) + restart gateway',
+        '  upgrade-all [--workspace <id>]         Upgrade OpenClaw on every instance (optionally one workspace)',
         '  channels <instance>                    List configured channels',
         '  logs <instance> [--lines N] [--agent X] View service logs',
         '',

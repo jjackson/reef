@@ -385,6 +385,54 @@ export async function restartOpenClaw(config: SshConfig): Promise<RestartResult>
   }
 }
 
+export interface UpgradeResult {
+  success: boolean
+  beforeVersion: string
+  afterVersion: string
+  output: string
+}
+
+/**
+ * Upgrades OpenClaw on a remote instance via `npm update -g openclaw`,
+ * then restarts the gateway. Captures the version before and after so
+ * the caller can tell whether an upgrade actually happened.
+ *
+ * Mirrors the chain run by app/api/instances/[id]/upgrade so the CLI and
+ * dashboard endpoint produce equivalent results.
+ */
+export async function upgradeOpenClaw(config: SshConfig): Promise<UpgradeResult> {
+  const versionRegex = /(\d{4}\.\d+\.\d+(?:-\d+)?)/
+  const parseVersion = (raw: string) =>
+    raw.match(versionRegex)?.[1] || raw.trim().split('\n')[0] || ''
+
+  const before = await runCommand(config, 'openclaw --version 2>&1')
+  const beforeVersion = parseVersion(before.stdout)
+
+  const update = await runCommand(config, 'npm update -g openclaw 2>&1')
+  const restart = await runCommand(config, 'openclaw gateway restart 2>&1')
+  const after = await runCommand(config, 'openclaw --version 2>&1')
+  const afterVersion = parseVersion(after.stdout)
+
+  const output = [
+    '=== npm update -g openclaw ===',
+    (update.stdout + update.stderr).trim(),
+    '',
+    '=== openclaw gateway restart ===',
+    (restart.stdout + restart.stderr).trim(),
+    '',
+    '=== version ===',
+    `before: ${beforeVersion || '(unknown)'}`,
+    `after:  ${afterVersion || '(unknown)'}`,
+  ].join('\n')
+
+  return {
+    success: update.code === 0 && restart.code === 0 && afterVersion !== '',
+    beforeVersion,
+    afterVersion,
+    output,
+  }
+}
+
 export interface StatusResult {
   output: string
   exitCode: number
