@@ -7,7 +7,7 @@ const { mockRunCommand, mockSaveApiKey } = vi.hoisted(() => ({
 vi.mock('../ssh', () => ({ runCommand: mockRunCommand }))
 vi.mock('../1password', () => ({ saveApiKey: mockSaveApiKey }))
 
-import { getHealth, listAgents, listDirectory, sendChatMessage, restartOpenClaw, rotateKey, getMemoryStatus, indexMemory, searchMemory, configureMemory } from '../openclaw'
+import { getHealth, listAgents, listDirectory, sendChatMessage, restartOpenClaw, upgradeOpenClaw, rotateKey, getMemoryStatus, indexMemory, searchMemory, configureMemory } from '../openclaw'
 
 const config = { host: '1.2.3.4', privateKey: 'fake-key' }
 
@@ -186,6 +186,62 @@ describe('restartOpenClaw', () => {
     const result = await restartOpenClaw(config)
     expect(result.success).toBe(false)
     expect(result.method).toBe('process-kill')
+  })
+})
+
+describe('upgradeOpenClaw', () => {
+  it('returns success with before/after versions when npm update + restart succeed', async () => {
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: '2026.2.22-2\n', stderr: '', code: 0 }) // before version
+      .mockResolvedValueOnce({ stdout: 'updated openclaw to 2026.5.27-1\n', stderr: '', code: 0 }) // npm update
+      .mockResolvedValueOnce({ stdout: 'restarted\n', stderr: '', code: 0 }) // gateway restart
+      .mockResolvedValueOnce({ stdout: '2026.5.27-1\n', stderr: '', code: 0 }) // after version
+
+    const result = await upgradeOpenClaw(config)
+    expect(result.success).toBe(true)
+    expect(result.beforeVersion).toBe('2026.2.22-2')
+    expect(result.afterVersion).toBe('2026.5.27-1')
+    expect(result.output).toContain('=== npm update -g openclaw ===')
+    expect(result.output).toContain('=== openclaw gateway restart ===')
+    expect(result.output).toContain('before: 2026.2.22-2')
+    expect(result.output).toContain('after:  2026.5.27-1')
+  })
+
+  it('reports failure when npm update fails', async () => {
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: '2026.2.22-2\n', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: '', stderr: 'EACCES', code: 1 }) // npm update fails
+      .mockResolvedValueOnce({ stdout: 'restarted\n', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: '2026.2.22-2\n', stderr: '', code: 0 })
+
+    const result = await upgradeOpenClaw(config)
+    expect(result.success).toBe(false)
+    expect(result.beforeVersion).toBe('2026.2.22-2')
+    expect(result.afterVersion).toBe('2026.2.22-2')
+  })
+
+  it('reports failure when gateway restart fails', async () => {
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: '2026.2.22-2\n', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: 'updated\n', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: '', stderr: 'gateway not found', code: 1 })
+      .mockResolvedValueOnce({ stdout: '2026.5.27-1\n', stderr: '', code: 0 })
+
+    const result = await upgradeOpenClaw(config)
+    expect(result.success).toBe(false)
+  })
+
+  it('still returns a version when the binary reports just "OpenClaw v..."', async () => {
+    mockRunCommand
+      .mockResolvedValueOnce({ stdout: 'OpenClaw v2026.2.22\n', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: 'updated\n', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: 'restarted\n', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: 'OpenClaw v2026.5.27\n', stderr: '', code: 0 })
+
+    const result = await upgradeOpenClaw(config)
+    expect(result.beforeVersion).toBe('2026.2.22')
+    expect(result.afterVersion).toBe('2026.5.27')
+    expect(result.success).toBe(true)
   })
 })
 

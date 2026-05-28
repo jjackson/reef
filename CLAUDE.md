@@ -95,6 +95,8 @@ Reef includes a CLI tool for managing OpenClaw instances from the terminal. All 
 - `reef status <instance>` — deep diagnostics via `openclaw status --all --deep`
 - `reef doctor <instance>` — run `openclaw doctor` to auto-fix issues
 - `reef restart <instance>` — restart OpenClaw (tries gateway, systemd, then kill)
+- `reef upgrade <instance>` — `npm update -g openclaw` + restart gateway; reports before/after version
+- `reef upgrade-all [--workspace <id>]` — upgrade every discovered instance serially (optionally one workspace)
 - `reef channels <instance>` — list configured channels
 - `reef logs <instance> [--lines N] [--agent <agent>]` — view service logs
 
