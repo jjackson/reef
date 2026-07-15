@@ -273,6 +273,29 @@ export async function backupAgent(
 }
 
 /**
+ * Backs up the entire ~/.openclaw/ directory (config, credentials, agents,
+ * memory, workspace — everything needed to rebuild the instance). Logs,
+ * media, and node_modules are excluded to keep the tarball manageable;
+ * workspaces often hold repo clones whose deps are reinstallable.
+ */
+export async function backupFullInstance(
+  config: SshConfig,
+  localTarPath: string
+): Promise<void> {
+  // Full-instance tarballs run to hundreds of MB — allow 30 minutes
+  const timeoutMs = 30 * 60_000
+  const tmpPath = `/tmp/reef-full-backup-${Date.now()}.tar.gz`
+  await runCommand(
+    config,
+    `tar -czf ${tmpPath} --exclude='.openclaw/logs' --exclude='.openclaw/media' --exclude='node_modules' -C $HOME .openclaw`,
+    timeoutMs
+  )
+  const { sftpPull } = await import('./ssh')
+  await sftpPull(config, tmpPath, localTarPath, timeoutMs)
+  await runCommand(config, `rm ${tmpPath}`)
+}
+
+/**
  * Reads the contents of a remote file via SSH cat.
  * Path must be within ~/.openclaw/.
  */
@@ -802,6 +825,9 @@ export async function setApiKey(
   }
 
   const provider = options?.provider || 'anthropic'
+  if (!SAFE_NAME_RE.test(provider)) {
+    return { success: false, output: `Invalid provider: ${provider}` }
+  }
   const profileKey = `${provider}:default`
   const agentDir = `$HOME/.openclaw/agents/${agentId}/agent`
 
@@ -836,12 +862,25 @@ export async function setApiKey(
     return { success: false, output: `Failed to write auth-profiles.json: ${writeResult.stderr}` }
   }
 
+  // OpenClaw 2026.6+ reads auth from a per-agent sqlite store and ignores
+  // auth-profiles.json; register the key there too. Best-effort — the
+  // command doesn't exist on older versions, which still read the file.
+  const keyB64 = Buffer.from(apiKey).toString('base64')
+  const registerResult = await runCommand(
+    config,
+    `echo '${keyB64}' | base64 -d | openclaw models auth --agent ${agentId} paste-api-key --provider ${provider}`
+  )
+  const registered = registerResult.code === 0
+
   // Optionally restart
   if (options?.restart) {
     await runCommand(config, 'systemctl --user restart openclaw-gateway 2>/dev/null || openclaw gateway restart 2>/dev/null || true')
   }
 
-  return { success: true, output: `Set ${provider} API key for agent '${agentId}'` }
+  return {
+    success: true,
+    output: `Set ${provider} API key for agent '${agentId}'${registered ? ' (registered in auth store)' : ' (legacy auth-profiles.json only — auth store registration unavailable)'}`,
+  }
 }
 
 export interface RotateKeyResult {

@@ -44,7 +44,8 @@ function withTimeout<T>(
  */
 export async function runCommand(
   config: SshConfig,
-  command: string
+  command: string,
+  timeoutMs: number = COMMAND_TIMEOUT
 ): Promise<CommandResult> {
   const conn = new Client()
   const inner = new Promise<CommandResult>((resolve, reject) => {
@@ -84,31 +85,42 @@ export async function runCommand(
         readyTimeout: READY_TIMEOUT,
       })
   })
-  return withTimeout(inner, COMMAND_TIMEOUT, `runCommand on ${config.host}`, () => conn.end())
+  return withTimeout(inner, timeoutMs, `runCommand on ${config.host}`, () => conn.end())
 }
 
 /**
  * SFTP-pulls a single file from the remote machine to a local path.
+ * Uses a sequential read stream rather than fastGet — fastGet's concurrent
+ * chunk reads are known to stall mid-transfer on large files.
  */
 export async function sftpPull(
   config: SshConfig,
   remotePath: string,
-  localPath: string
+  localPath: string,
+  timeoutMs: number = COMMAND_TIMEOUT
 ): Promise<void> {
   const conn = new Client()
   const inner = new Promise<void>((resolve, reject) => {
     conn
       .on('ready', () => {
-        conn.sftp((err, sftp) => {
+        conn.sftp(async (err, sftp) => {
           if (err) {
             conn.end()
             return reject(err)
           }
-          sftp.fastGet(remotePath, localPath, (err) => {
+          try {
+            const { createWriteStream } = await import('fs')
+            const { pipeline } = await import('stream/promises')
+            await pipeline(
+              sftp.createReadStream(remotePath),
+              createWriteStream(localPath)
+            )
             conn.end()
-            if (err) reject(err)
-            else resolve()
-          })
+            resolve()
+          } catch (streamErr) {
+            conn.end()
+            reject(streamErr)
+          }
         })
       })
       .on('error', (err) => {
@@ -123,7 +135,7 @@ export async function sftpPull(
         readyTimeout: READY_TIMEOUT,
       })
   })
-  return withTimeout(inner, COMMAND_TIMEOUT, `sftpPull on ${config.host}`, () => conn.end())
+  return withTimeout(inner, timeoutMs, `sftpPull on ${config.host}`, () => conn.end())
 }
 
 /**

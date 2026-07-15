@@ -47,6 +47,9 @@ reef <command>
 | `reef insights <inst>` | Instance knowledge |
 | `reef insights --skill <name>` | Find skill across fleet |
 | `reef report [path]` | Generate HTML report |
+| `reef power-off <inst>` | Power off droplet (still billed) |
+| `reef destroy <inst> --yes` | Destroy droplet permanently |
+| `reef decommission <inst> --yes` | Backup + destroy + settings cleanup |
 
 ## Instance IDs
 
@@ -195,6 +198,25 @@ reef check-backup ./backups/openclaw-hal-main-2026-02-23T...tar.gz
 # Deploy to another instance
 reef deploy openclaw-dot main ./backups/openclaw-hal-main-2026-02-23T...tar.gz
 ```
+
+### Decommissioning an Instance
+
+```bash
+# Full flow: backup all agents + channel config (tarballs verified locally),
+# power off, destroy the droplet (stops billing), remove from config/settings.json.
+# Refuses to destroy if the backup didn't verify cleanly.
+reef decommission openclaw-hal --yes
+
+# Also pull the entire ~/.openclaw as one tarball (hundreds of MB, slow):
+reef decommission openclaw-hal --yes --full-backup
+
+# Primitives, if you need them separately:
+reef power-off openclaw-hal        # droplet still accrues charges while off
+reef destroy openclaw-hal --yes    # permanent — no backup taken
+```
+
+The `--yes` flag is required for anything destructive; without it the command
+refuses and explains what it would do. Backups land in `./backups/`.
 
 ### Fleet Insights & Knowledge
 

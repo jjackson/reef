@@ -42,4 +42,59 @@ describe('DigitalOceanProvider', () => {
   it('type is digitalocean', () => {
     expect(new DigitalOceanProvider('token').type).toBe('digitalocean')
   })
+
+  it('powerOffInstance posts power_off and polls until completed', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true, json: () => Promise.resolve({ action: { id: 42, status: 'in-progress' } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true, json: () => Promise.resolve({ action: { id: 42, status: 'completed' } }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+    const provider = new DigitalOceanProvider('test-token')
+    const result = await provider.powerOffInstance('123')
+    expect(result).toEqual({ success: true })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.digitalocean.com/v2/droplets/123/actions',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ type: 'power_off' }) })
+    )
+  })
+
+  it('powerOffInstance treats already-off 422 as success', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 422, text: () => Promise.resolve('Droplet is already powered off.'),
+    }))
+    const provider = new DigitalOceanProvider('test-token')
+    expect(await provider.powerOffInstance('123')).toEqual({ success: true })
+  })
+
+  it('destroyInstance deletes the droplet', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 })
+    vi.stubGlobal('fetch', fetchMock)
+    const provider = new DigitalOceanProvider('test-token')
+    expect(await provider.destroyInstance('123')).toEqual({ success: true })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.digitalocean.com/v2/droplets/123',
+      expect.objectContaining({ method: 'DELETE' })
+    )
+  })
+
+  it('destroyInstance treats 404 as already destroyed', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 404, text: () => Promise.resolve('not found'),
+    }))
+    const provider = new DigitalOceanProvider('test-token')
+    expect(await provider.destroyInstance('123')).toEqual({ success: true })
+  })
+
+  it('destroyInstance surfaces non-retryable API errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 403, text: () => Promise.resolve('forbidden'),
+    }))
+    const provider = new DigitalOceanProvider('test-token')
+    const result = await provider.destroyInstance('123')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('403')
+  })
 })

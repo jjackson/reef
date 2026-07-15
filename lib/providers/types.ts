@@ -42,6 +42,8 @@ export interface CloudProvider {
   listInstances(): Promise<CloudInstance[]>
   getInstance(providerId: string): Promise<CloudInstance | null>
   rebootInstance(providerId: string): Promise<{ success: boolean; error?: string }>
+  powerOffInstance(providerId: string): Promise<{ success: boolean; error?: string }>
+  destroyInstance(providerId: string): Promise<{ success: boolean; error?: string }>
   listRegions(): Promise<CloudRegion[]>
   listSizes(): Promise<CloudSize[]>
   createInstance(opts: CreateInstanceOptions): Promise<CloudInstance>

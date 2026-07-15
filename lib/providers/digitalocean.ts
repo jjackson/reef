@@ -89,6 +89,72 @@ export class DigitalOceanProvider implements CloudProvider {
     return { success: true }
   }
 
+  private async waitForAction(
+    dropletId: number,
+    actionId: number,
+    timeoutMs = 90_000
+  ): Promise<{ success: boolean; error?: string }> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const res = await fetch(
+        `${DO_API}/droplets/${dropletId}/actions/${actionId}`,
+        { headers: this.headers() }
+      )
+      if (!res.ok) {
+        return { success: false, error: `DO API error polling action: ${res.status}` }
+      }
+      const data = await res.json()
+      const status = data.action?.status
+      if (status === 'completed') return { success: true }
+      if (status === 'errored') return { success: false, error: 'Power off action errored' }
+      await new Promise((r) => setTimeout(r, 3000))
+    }
+    return { success: false, error: 'Timed out waiting for power off to complete' }
+  }
+
+  async powerOffInstance(
+    providerId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const dropletId = Number(providerId)
+    const res = await fetch(`${DO_API}/droplets/${dropletId}/actions`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ type: 'power_off' }),
+    })
+
+    if (!res.ok) {
+      const body = await res.text()
+      // Already-off droplets return 422; treat as success
+      if (res.status === 422 && /already.*off/i.test(body)) {
+        return { success: true }
+      }
+      return { success: false, error: `DO API error: ${res.status} ${body}` }
+    }
+
+    const data = await res.json()
+    return this.waitForAction(dropletId, data.action.id)
+  }
+
+  async destroyInstance(
+    providerId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const dropletId = Number(providerId)
+    // A 422 means another action (e.g. power off) is still settling — retry briefly
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const res = await fetch(`${DO_API}/droplets/${dropletId}`, {
+        method: 'DELETE',
+        headers: this.headers(),
+      })
+      if (res.ok || res.status === 404) return { success: true }
+      const body = await res.text()
+      if (res.status !== 422) {
+        return { success: false, error: `DO API error: ${res.status} ${body}` }
+      }
+      await new Promise((r) => setTimeout(r, 3000))
+    }
+    return { success: false, error: 'Droplet busy: destroy still rejected after retries' }
+  }
+
   async listRegions(): Promise<CloudRegion[]> {
     const res = await fetch(`${DO_API}/regions?per_page=200`, {
       headers: this.headers(),

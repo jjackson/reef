@@ -46,6 +46,17 @@ export function moveInstance(instanceName: string, workspaceId: string): void {
   writeSettings(settings)
 }
 
+export function removeInstanceFromSettings(instanceName: string): void {
+  const settings = loadSettings()
+  for (const ws of Object.values(settings.workspaces)) {
+    ws.instances = ws.instances.filter(n => n !== instanceName)
+  }
+  for (const account of Object.values(settings.accounts)) {
+    delete account.nameMap[instanceName]
+  }
+  writeSettings(settings)
+}
+
 export function createWorkspace(id: string, label: string): void {
   const settings = loadSettings()
   if (settings.workspaces[id]) throw new Error(`Workspace "${id}" already exists`)
