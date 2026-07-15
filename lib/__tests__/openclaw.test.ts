@@ -260,14 +260,16 @@ describe('rotateKey', () => {
       ]),
       stderr: '', code: 0,
     })
-    // setApiKey for 'main': read existing + mkdir + write
+    // setApiKey for 'main': read existing + mkdir + write + auth-store register
     mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })  // cat existing
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })     // mkdir
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })     // write
-    // setApiKey for 'scout': read existing + mkdir + write
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })     // register
+    // setApiKey for 'scout': read existing + mkdir + write + auth-store register
     mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })  // cat existing
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })     // mkdir
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })     // write
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })     // register
     // restart gateway
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
 
@@ -291,11 +293,12 @@ describe('rotateKey', () => {
       ]),
       stderr: '', code: 0,
     })
-    // main: success (read + mkdir + write)
+    // main: success (read + mkdir + write + register)
     mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
-    // broken: write fails (read + mkdir + write fails)
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
+    // broken: write fails (read + mkdir + write fails, no register)
     mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: 'Permission denied', code: 1 })
@@ -318,8 +321,9 @@ describe('rotateKey', () => {
       ]),
       stderr: '', code: 0,
     })
-    // main: success (read + mkdir + write)
+    // main: success (read + mkdir + write + register)
     mockRunCommand.mockResolvedValueOnce({ stdout: '{}', stderr: '', code: 0 })
+    mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
     mockRunCommand.mockResolvedValueOnce({ stdout: '', stderr: '', code: 0 })
     // restart gateway

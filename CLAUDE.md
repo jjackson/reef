@@ -142,6 +142,11 @@ Reef includes a CLI tool for managing OpenClaw instances from the terminal. All 
 - `reef check-backup <tarball>` — verify tarball integrity
 - `reef deploy <instance> <agent> <tarball>` — push, untar, run doctor
 
+**Decommissioning:**
+- `reef power-off <instance>` — power off the droplet (still billed by DO!)
+- `reef destroy <instance> --yes` — permanently destroy the droplet (stops billing)
+- `reef decommission <instance> --yes [--skip-backup] [--full-backup]` — extract all agents + channel config to `./backups/` (tarballs verified locally), power off, destroy, remove instance from `config/settings.json`. Refuses to destroy if the backup didn't verify. `--full-backup` additionally pulls the entire `~/.openclaw` as one tarball (large/slow).
+
 **Remote access:**
 - `reef ssh <instance> <command>` — run arbitrary SSH command
 - `reef ls <instance> <path>` — list remote directory contents

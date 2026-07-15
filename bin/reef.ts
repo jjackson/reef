@@ -1,6 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { loadEnv } from '../lib/env'
-import { listInstances, resolveInstance } from '../lib/instances'
+import { listInstances, resolveInstance, getAccountToken } from '../lib/instances'
 import {
   getHealth,
   listAgents,
@@ -32,6 +32,7 @@ import {
 import { runCommand } from '../lib/ssh'
 import { getBotName } from '../lib/mapping'
 import { createMachine } from '../lib/create-machine'
+import { createProvider } from '../lib/providers'
 import { existsSync } from 'fs'
 import { resolve, join } from 'path'
 import { execSync } from 'child_process'
@@ -563,6 +564,49 @@ async function main() {
       break
     }
 
+    case 'power-off': {
+      const instance = await requireInstance(args[0])
+      const token = await getAccountToken(instance.accountId)
+      const provider = createProvider(instance.provider, token)
+      const result = await provider.powerOffInstance(instance.providerId)
+      console.log(JSON.stringify({
+        ...result,
+        instance: instance.id,
+        ...(result.success ? { note: 'Powered-off droplets still accrue charges; use destroy or decommission to stop billing' } : {}),
+      }))
+      break
+    }
+
+    case 'destroy': {
+      const instanceId = args[0]
+      if (!instanceId) fail('Usage: reef destroy <instance> --yes')
+      if (!args.includes('--yes')) fail(`Refusing to destroy ${instanceId} without --yes. This permanently deletes the droplet and its disk.`)
+      const instance = await requireInstance(instanceId)
+      const token = await getAccountToken(instance.accountId)
+      const provider = createProvider(instance.provider, token)
+      const result = await provider.destroyInstance(instance.providerId)
+      console.log(JSON.stringify({ ...result, instance: instance.id }))
+      break
+    }
+
+    case 'decommission': {
+      const instanceId = args[0]
+      if (!instanceId) fail('Usage: reef decommission <instance> --yes [--skip-backup] [--full-backup]')
+      if (!args.includes('--yes')) fail(`Refusing to decommission ${instanceId} without --yes. This backs up the instance's agents, then permanently destroys the droplet.`)
+      const instance = await requireInstance(instanceId)
+      const { decommissionInstance } = await import('../lib/decommission')
+      const backupDir = resolve('backups')
+      const { mkdirSync } = await import('fs')
+      mkdirSync(backupDir, { recursive: true })
+      const result = await decommissionInstance(instance, backupDir, {
+        skipBackup: args.includes('--skip-backup'),
+        fullBackup: args.includes('--full-backup'),
+      })
+      console.log(JSON.stringify(result))
+      if (!result.success) process.exit(1)
+      break
+    }
+
     case 'help': {
       const commands = [
         'Instance commands:',
@@ -602,6 +646,13 @@ async function main() {
         'Machine provisioning:',
         '  create-machine <name> [--account A] [--region R] [--size S] [--ssh-key new|<title>]',
         '                                         Provision new DO droplet with SSH key',
+        '',
+        'Decommissioning:',
+        '  power-off <instance>                   Power off the droplet (still billed!)',
+        '  destroy <instance> --yes               Permanently destroy the droplet (stops billing)',
+        '  decommission <instance> --yes [--skip-backup] [--full-backup]',
+        '                                         Backup agents -> power off -> destroy -> remove from settings',
+        '                                         (--full-backup also pulls the entire ~/.openclaw as a tarball)',
         '',
         'Remote access:',
         '  ssh <instance> <command>               Run arbitrary SSH command',

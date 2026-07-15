@@ -10,7 +10,7 @@ vi.mock('../settings', () => ({
   writeSettings: mockWriteSettings,
 }))
 
-import { getWorkspaces, getWorkspaceForInstance, ensureDefaultWorkspace, moveInstance, createWorkspace, deleteWorkspace } from '../workspaces'
+import { getWorkspaces, getWorkspaceForInstance, ensureDefaultWorkspace, moveInstance, createWorkspace, deleteWorkspace, removeInstanceFromSettings } from '../workspaces'
 
 describe('workspaces', () => {
   beforeEach(() => {
@@ -106,5 +106,23 @@ describe('workspaces', () => {
 
   it('deleteWorkspace throws for default workspace', () => {
     expect(() => deleteWorkspace('default')).toThrow('Cannot delete')
+  })
+
+  it('removeInstanceFromSettings strips the instance from workspaces and nameMaps', () => {
+    const settings = {
+      accounts: {
+        personal: { tokenRef: 'op://x', nameMap: { 'openclaw-hal': 'Hal', 'openclaw-eva': 'Eva' } },
+      },
+      workspaces: {
+        default: { label: 'Default', instances: ['openclaw-hal', 'openclaw-eva'] },
+        prod: { label: 'Production', instances: ['openclaw-hal'] },
+      },
+    }
+    mockLoadSettings.mockReturnValue(settings)
+    removeInstanceFromSettings('openclaw-hal')
+    expect(settings.workspaces.default.instances).toEqual(['openclaw-eva'])
+    expect(settings.workspaces.prod.instances).toEqual([])
+    expect(settings.accounts.personal.nameMap).toEqual({ 'openclaw-eva': 'Eva' })
+    expect(mockWriteSettings).toHaveBeenCalled()
   })
 })
